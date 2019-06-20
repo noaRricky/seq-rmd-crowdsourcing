@@ -1,0 +1,4 @@
+.venv/
+.vscode/
+inputs/
+notebooks/.ipynb_checkpoints
