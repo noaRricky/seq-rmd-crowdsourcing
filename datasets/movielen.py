@@ -9,3 +9,7 @@ class Movielen10K(object):
 class Movielen10M(object):
     def __init__(self, data_path: Path) -> None:
         pass
+
+
+if __name__ == "__main__":
+    pass
