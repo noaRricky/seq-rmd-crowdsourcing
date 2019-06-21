@@ -15,8 +15,28 @@ class Movielen10K(object):
                              names=self._COLUMNS,
                              engine='python')
         dict_df = self._split_train_test(raw_df)
-        self.train_ds = self._df_to_dataset(dict_df['train'])
-        self.test_ds = self._df_to_dataset(dict_df['test'])
+        train_size = dict_df['train'].shape[0]
+        test_size = dict_df['test'].shape[0]
+        train_ds = self._df_to_dataset(dict_df['train'])
+        test_ds = self._df_to_dataset(dict_df['test'])
+        self._dict_size: Dict[str, int] = {
+            'train': train_size,
+            'test': test_size
+        }
+        self._dict_ds: Dict[str, tf.data.Dataset] = {
+            'train': train_ds,
+            'test': test_ds
+        }
+
+    def get_dataset(self, ds_type: str, batch_size: int,
+                    shuffle: bool = True) -> tf.data.Dataset:
+        assert ds_type in self._dict_ds, "don't contain {} dataset".format(
+            ds_type)
+        ds = self._dict_ds[ds_type]
+        ds = ds.batch(batch_size)
+        if shuffle:
+            ds = ds.shuffle(self._dict_size[ds_type])
+        return ds
 
     def _split_train_test(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         df.sort_values(by=['timestamp'], inplace=True)

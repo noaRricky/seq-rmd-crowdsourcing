@@ -3,3 +3,4 @@
 inputs/
 notebooks/.ipynb_checkpoints
 .mypy_cache
+tests/__pycache__
