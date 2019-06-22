@@ -27,6 +27,7 @@ class TestMovelen(TestCase):
                                                   shuffle=False)
 
         for feature_batch, label_batch in train_ds.take(1):
+            print('batch of feature: {}'.format(feature_batch))
             print('batch of userId: {}'.format(feature_batch['userId']))
             print('batch of label: {}'.format(label_batch))
 

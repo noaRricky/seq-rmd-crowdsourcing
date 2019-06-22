@@ -1,15 +1,16 @@
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow import feature_column
+from tensorflow import feature_column, keras
 
 
 class Movielen10K(object):
     def __init__(self, data_path: Path) -> None:
-        self._COLUMNS = ['userId', 'movieId', 'timestamp', 'rating']
+        self.num_classes = 5
+        self._COLUMNS = ['userId', 'movieId', 'rating', 'timestamp']
         self._CAT_NAMES = ['userId', 'movieId']
         # Read 10k data
         raw_df = pd.read_csv(data_path,
@@ -62,7 +63,13 @@ class Movielen10K(object):
         df.pop('timestamp')
         labels = df.pop('rating')
         ds = tf.data.Dataset.from_tensor_slices((dict(df), labels))
+        ds = ds.map(self._preprocess)
         return ds
+
+    def _preprocess(self, features: Dict[str, tf.Tensor],
+                    label: tf.Tensor) -> Any:
+        return features, keras.utils.to_categorical(
+            label, num_classes=self.num_classes)
 
     def _build_vocab_dict(self, df: pd.DataFrame,
                           cat_names: List[str]) -> Dict[str, np.ndarray]:
