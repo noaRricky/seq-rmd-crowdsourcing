@@ -32,6 +32,6 @@ class TestMovelen(TestCase):
 
     def test_movielen10k_vocab(self):
         dataset = Movielen10K(MOVIE10K_PATH)
-        vocab_dict = dataset._dict_vocab
+        vocab_dict = dataset.get_vocab_dict()
         print(f"user array shape: {vocab_dict['userId'].shape}")
         print(f"movie array shape: {vocab_dict['movieId'].shape}")

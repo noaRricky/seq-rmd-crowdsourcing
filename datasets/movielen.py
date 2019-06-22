@@ -42,9 +42,8 @@ class Movielen10K(object):
             ds = ds.shuffle(self._dict_size[ds_type])
         return ds
 
-    def get_vocab(self, vocab_type: str) -> np.ndarray:
-        assert vocab_type in self._dict_vocab, "vocab doesn't contain {}".format(
-            vocab_type)
+    def get_vocab_dict(self) -> Dict[str, np.ndarray]:
+        return self._dict_vocab
 
     def _split_train_test(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         df.sort_values(by=['timestamp'], inplace=True)
