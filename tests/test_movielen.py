@@ -29,3 +29,9 @@ class TestMovelen(TestCase):
         for feature_batch, label_batch in train_ds.take(1):
             print('batch of userId: {}'.format(feature_batch['userId']))
             print('batch of label: {}'.format(label_batch))
+
+    def test_movielen10k_vocab(self):
+        dataset = Movielen10K(MOVIE10K_PATH)
+        vocab_dict = dataset._dict_vocab
+        print(f"user array shape: {vocab_dict['userId'].shape}")
+        print(f"movie array shape: {vocab_dict['movieId'].shape}")
