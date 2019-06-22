@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Dict, List
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow import feature_column
@@ -9,6 +10,7 @@ from tensorflow import feature_column
 class Movielen10K(object):
     def __init__(self, data_path: Path) -> None:
         self._COLUMNS = ['userId', 'movieId', 'timestamp', 'rating']
+        self._CAT_NAMES = ['userId', 'movieId']
         # Read 10k data
         raw_df = pd.read_csv(data_path,
                              sep='\t',
@@ -27,6 +29,8 @@ class Movielen10K(object):
             'train': train_ds,
             'test': test_ds
         }
+        self._dict_vocab = self._build_vocab_dict(dict_df['train'],
+                                                  self._CAT_NAMES)
 
     def get_dataset(self, ds_type: str, batch_size: int,
                     shuffle: bool = True) -> tf.data.Dataset:
@@ -37,6 +41,10 @@ class Movielen10K(object):
         if shuffle:
             ds = ds.shuffle(self._dict_size[ds_type])
         return ds
+
+    def get_vocab(self, vocab_type: str) -> np.ndarray:
+        assert vocab_type in self._dict_vocab, "vocab doesn't contain {}".format(
+            vocab_type)
 
     def _split_train_test(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         df.sort_values(by=['timestamp'], inplace=True)
@@ -56,6 +64,10 @@ class Movielen10K(object):
         labels = df.pop('rating')
         ds = tf.data.Dataset.from_tensor_slices((dict(df), labels))
         return ds
+
+    def _build_vocab_dict(self, df: pd.DataFrame,
+                          cat_names: List[str]) -> Dict[str, np.ndarray]:
+        return {name: df[name].unique() for name in cat_names}
 
 
 class Movielen10M(object):
