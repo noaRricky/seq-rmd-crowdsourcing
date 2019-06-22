@@ -41,6 +41,7 @@ class Movielen10K(object):
         ds = ds.batch(batch_size)
         if shuffle:
             ds = ds.shuffle(self._dict_size[ds_type])
+        ds = ds.map(self._preprocess)
         return ds
 
     def get_vocab_dict(self) -> Dict[str, np.ndarray]:
@@ -63,13 +64,13 @@ class Movielen10K(object):
         df.pop('timestamp')
         labels = df.pop('rating')
         ds = tf.data.Dataset.from_tensor_slices((dict(df), labels))
-        ds = ds.map(self._preprocess)
         return ds
 
     def _preprocess(self, features: Dict[str, tf.Tensor],
-                    label: tf.Tensor) -> Any:
-        return features, keras.utils.to_categorical(
-            label, num_classes=self.num_classes)
+                    labels: tf.Tensor) -> Any:
+        labels = labels - 1
+        labels = tf.one_hot(labels, self.num_classes)
+        return features, labels
 
     def _build_vocab_dict(self, df: pd.DataFrame,
                           cat_names: List[str]) -> Dict[str, np.ndarray]:

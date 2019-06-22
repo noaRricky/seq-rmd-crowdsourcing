@@ -27,9 +27,11 @@ class TestMovelen(TestCase):
                                                   shuffle=False)
 
         for feature_batch, label_batch in train_ds.take(1):
-            print('batch of feature: {}'.format(feature_batch))
-            print('batch of userId: {}'.format(feature_batch['userId']))
-            print('batch of label: {}'.format(label_batch))
+            print('batch of label shape: {}'.format(label_batch.shape))
+            print('batch of label : {}'.format(label_batch))
+            # print('batch of feature: {}'.format(feature_batch))
+            # print('batch of userId: {}'.format(feature_batch['userId']))
+            # print('batch of label: {}'.format(label_batch))
 
     def test_movielen10k_vocab(self):
         dataset = Movielen10K(MOVIE10K_PATH)
