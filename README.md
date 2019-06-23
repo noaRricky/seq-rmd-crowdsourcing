@@ -9,4 +9,4 @@
 
 ## Content of List
 
-- stage 1: simple model
+- [stage 1: simple model](./docs/simple_model.md)
