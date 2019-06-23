@@ -63,7 +63,7 @@ class Movielen10K(object):
         # Delete timestamp while I currenly don't use it
         df.pop('timestamp')
         labels = df.pop('rating')
-        ds = tf.data.Dataset.from_tensor_slices((dict(df), labels))
+        ds = tf.data.Dataset.from_tensor_slices((df.to_dict(), labels))
         return ds
 
     def _preprocess(self, features: Dict[str, tf.Tensor],
