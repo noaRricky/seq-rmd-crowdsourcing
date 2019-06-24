@@ -38,10 +38,11 @@ class Movielen10K(object):
         assert ds_type in self._dict_ds, "don't contain {} dataset".format(
             ds_type)
         ds = self._dict_ds[ds_type]
-        ds = ds.batch(batch_size)
         if shuffle:
             ds = ds.shuffle(self._dict_size[ds_type])
+        ds = ds.batch(batch_size)
         ds = ds.map(self._preprocess)
+        ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
         return ds
 
     def get_vocab_dict(self) -> Dict[str, np.ndarray]:
