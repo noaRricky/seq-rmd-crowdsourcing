@@ -8,3 +8,10 @@
   - item_to_idx
   - idx_to_item
   - traning_set: Dict[user_index, (item_index, item_time)]
+
+## New Preprocess step
+
+- add prev item
+- split train, valid, test
+- get categories
+- add first nan item
