@@ -1,9 +1,11 @@
 import logging
+import sys
 
 
 def build_logger() -> logging.Logger:
     # Init logger
     logger = logging.getLogger(name=__file__)
+    logger.setLevel(level=logging.INFO)
 
     # Create handler
     cmd_handler = logging.StreamHandler()
@@ -18,3 +20,10 @@ def build_logger() -> logging.Logger:
     logger.addHandler(cmd_handler)
 
     return logger
+
+
+if __name__ == "__main__":
+    for each_path in sys.path:
+        print(each_path)
+
+    print("hello world")
