@@ -62,9 +62,10 @@ class TorchMovielen10k:
 
         # Add previous item
         df['prev_item_id'] = df.item_id
-        data = df['prev_item_id'].values
-        data = np.roll(data, 1)
-        df['prev_item_id'] = data
+        df['prev_item_id'] = df.prev_item_id.shift(periods=1)
+
+        # Add negtive item
+        df['neg_item_id'] = df.item_id.sample(df.shape[0]).values
 
         # split train and test ddataframe
         df = df.sort_values(by=['time'])
@@ -75,8 +76,13 @@ class TorchMovielen10k:
         train_df = remain_df[duplicate_mask]
         valid_df = remain_df[~duplicate_mask]
 
+        # Set first item non for each user
+        train_df.sort_values(by=['user_id'])
+        first_mask = ~train_df.duplicated(subset=['user_id'], keep='first')
+        train_df['prev_item_id'][first_mask] = -1
+
         # encode feature
-        cat_names = ['user_id', 'item_id', 'prev_item_id']
+        cat_names = ['user_id', 'item_id', 'prev_item_id', 'neg_item_id']
         ordinal_encoder = OrdinalEncoder(categories='auto', dtype='int32')
         ordinal_encoder.fit(train_df[cat_names])
 
@@ -89,13 +95,7 @@ class TorchMovielen10k:
         data = ordinal_encoder.transform(test_df[cat_names])
         test_df[cat_names] = data
 
-        # Set first item non for each user
-        train_df.sort_values(by=['user_id'])
-        first_mask = ~train_df.duplicated(subset=['user_id'], keep='first')
-        train_df['prev_item_id'][first_mask] = -1
-
         # set train, valid, test
-        self.cat_names = cat_names
         self.cat_dict = {
             name: cat_array
             for name, cat_array in zip(cat_names, ordinal_encoder.categories_)
@@ -111,8 +111,7 @@ class TorchMovielen10k:
                        batch_size: int = 32,
                        shuffle: bool = True,
                        num_workers: int = 4) -> DataLoader:
-        assert dataset_type in ['train', 'valid',
-                                'test'], "Don't contain dataset type"
+        assert dataset_type in self.df_dict, "Don't contain dataset type"
 
         ds = TabularDataset(self.df_dict[dataset_type], dataset_type)
         return DataLoader(ds,
