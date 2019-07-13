@@ -13,16 +13,20 @@ from utils import build_logger
 logger = build_logger()
 
 
-class TabularDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, dataset_type: str):
-        self.dataset_type = dataset_type
+class MovelenDataset(Dataset):
+    def __init__(self, df: pd.DataFrame, pos_names: List[str],
+                 neg_names: List[str]):
+        self.pos_names = pos_names
+        self.neg_names = neg_names
         self.df = df
 
     def __len__(self):
         return self.df.shape[0]
 
     def __getitem__(self, idx):
-        return self.df.iloc[idx].values
+        pos_data = self.df[self.pos_names].iloc[idx].values
+        neg_data = self.df[self.neg_names].iloc[idx].values
+        return pos_data, neg_data
 
 
 class TorchMovielen10k:
@@ -97,6 +101,16 @@ class TorchMovielen10k:
             name: cat_array
             for name, cat_array in zip(cat_names, ordinal_encoder.categories_)
         }
+        self.pos_cat_names = [
+            'user_id',
+            'item_id',
+            'prev_item_id',
+        ]
+        self.neg_cat_names = [
+            'user_id',
+            'neg_item_id',
+            'prev_item_id',
+        ]
         self.df_dict = {
             'train': train_df[cat_names],
             'valid': valid_df[cat_names],
@@ -112,7 +126,8 @@ class TorchMovielen10k:
         assert dataset_type in self.df_dict, "Don't contain dataset type"
 
         self.device = device
-        ds = TabularDataset(self.df_dict[dataset_type], dataset_type)
+        ds = MovelenDataset(self.df_dict[dataset_type], self.pos_cat_names,
+                            self.neg_cat_names)
         return DataLoader(ds,
                           batch_size=batch_size,
                           shuffle=shuffle,
@@ -120,7 +135,10 @@ class TorchMovielen10k:
                           num_workers=num_workers)
 
     def data_collate(self, batch: List[np.ndarray]):
-        return T.tensor(batch, dtype=T.long, device=self.device)
+        pos_batch, neg_batch = zip(*batch)
+        pos_tensor = T.tensor(pos_batch, dtype=T.long, device=self.device)
+        neg_tensor = T.tensor(neg_batch, dtype=T.long, device=self.device)
+        return pos_tensor, neg_tensor
 
 
 if __name__ == "__main__":
