@@ -13,10 +13,6 @@ from utils import build_logger
 logger = build_logger()
 
 
-def cat_collate(batch) -> Tensor:
-    return T.tensor(batch, dtype=T.long)
-
-
 class TabularDataset(Dataset):
     def __init__(self, df: pd.DataFrame, dataset_type: str):
         self.dataset_type = dataset_type
@@ -108,17 +104,22 @@ class TorchMovielen10k:
 
     def get_dataloader(self,
                        dataset_type: str,
+                       device: T.device = T.device('cpu'),
                        batch_size: int = 32,
                        shuffle: bool = True,
                        num_workers: int = 4) -> DataLoader:
         assert dataset_type in self.df_dict, "Don't contain dataset type"
 
+        self.device = device
         ds = TabularDataset(self.df_dict[dataset_type], dataset_type)
         return DataLoader(ds,
                           batch_size=batch_size,
                           shuffle=shuffle,
-                          collate_fn=cat_collate,
+                          collate_fn=self.data_collate,
                           num_workers=num_workers)
+
+    def data_collate(self, batch: List[np.ndarray]):
+        return T.tensor(batch, dtype=T.long, device=self.device)
 
 
 if __name__ == "__main__":
