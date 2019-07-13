@@ -58,7 +58,8 @@ class TorchMovielen10k:
 
         # Add previous item
         df['prev_item_id'] = df.item_id
-        df['prev_item_id'] = df.prev_item_id.shift(periods=1)
+        df['prev_item_id'] = df['prev_item_id'].shift(
+            periods=1).fillna(0).astype(np.int32)
 
         # Add negtive item
         df['neg_item_id'] = df.item_id.sample(df.shape[0]).values
@@ -126,8 +127,9 @@ if __name__ == "__main__":
     file_path = Path('inputs/ml-100k/u.data')
 
     movelen = TorchMovielen10k(file_path, user_min=4, item_min=4)
-    train_dl = movelen.get_dataloader('train')
+    train_dl = movelen.get_dataloader('train', batch_size=4)
 
     for batch in train_dl:
         print(batch)
+        print(batch.device)
         break
