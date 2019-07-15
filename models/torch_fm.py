@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 from torch_scatter import scatter_mean
 from tqdm import tqdm
 
@@ -24,14 +24,18 @@ class TorchFM(nn.Module):
             neg_cat_names: List[str],
             num_dim: int = 10,
     ):
+        super(TorchFM, self).__init__()
+
         self.cat_dict = cat_dict
         self.pos_cat_names = pos_cat_names
         self.neg_cat_names = neg_cat_names
         self.num_dim = num_dim
         self.emb_linear_layer = nn.ModuleList(
             [nn.Embedding(cat_dict[name].size, 1) for name in pos_cat_names])
-        self.emb_factor_layer = nn.ModuleList(
-            [nn.Embedding(cat_dict[name], num_dim) for name in pos_cat_names])
+        self.emb_factor_layer = nn.ModuleList([
+            nn.Embedding(cat_dict[name].size, num_dim)
+            for name in pos_cat_names
+        ])
 
     def forward(self, pos_batch, neg_batch):
         # Linear terms
@@ -44,6 +48,9 @@ class TorchFM(nn.Module):
 
         pos_preds = pos_linear + pos_factor
         neg_preds = neg_linear + neg_factor
+
+        pos_preds = pos_preds.squeeze()
+        neg_preds = neg_preds.squeeze()
 
         return pos_preds, neg_preds
 
@@ -123,7 +130,7 @@ class FMLearner(object):
                 writer.add_scalar('train_accuracy',
                                   auc.item(),
                                   global_step=cur_epoch)
-                print("epoch: {}, train loss: {}, valid auccurcy: {}".format(
+                print("epoch: {}, train loss: {}, train auccurcy: {}".format(
                     cur_epoch, bprloss.item(), auc.item()))
             for step, (pos_batch, neg_batch) in enumerate(self.test_dl):
                 with T.no_grad():
@@ -163,7 +170,7 @@ class FMLearner(object):
         l2_reg = self.compute_l2_term(linear_reg=linear_reg,
                                       factor_reg=factor_reg)
         bprloss = T.sum(
-            T.log(1e-10 + F.sigmoid(pos_preds - neg_preds))) - l2_reg
+            T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))) - l2_reg
         bprloss = -bprloss
         return bprloss
 
@@ -171,6 +178,7 @@ class FMLearner(object):
                neg_preds: T.Tensor) -> T.Tensor:
 
         binary_ranks = (pos_preds - neg_preds) > 0
+        binary_ranks = binary_ranks.to(T.float)
         users_index = pos_batch[:, 0]
         users, user_counts = T.unique(users_index, return_counts=True)
         auc_per_user = scatter_mean(binary_ranks, users_index)
