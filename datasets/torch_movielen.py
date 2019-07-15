@@ -97,21 +97,21 @@ class TorchMovielen10k:
         test_df[cat_names] = data
 
         # set train, valid, test
-        self.cat_dict = {
+        self.cat_dict: Dict[str, np.ndarray] = {
             name: cat_array
             for name, cat_array in zip(cat_names, ordinal_encoder.categories_)
         }
-        self.pos_cat_names = [
+        self.pos_cat_names: List[str] = [
             'user_id',
             'item_id',
             'prev_item_id',
         ]
-        self.neg_cat_names = [
+        self.neg_cat_names: List[str] = [
             'user_id',
             'neg_item_id',
             'prev_item_id',
         ]
-        self.df_dict = {
+        self.df_dict: Dict[str, pd.DataFrame] = {
             'train': train_df[cat_names],
             'valid': valid_df[cat_names],
             'test': test_df[cat_names]
@@ -119,15 +119,15 @@ class TorchMovielen10k:
 
     def get_dataloader(self,
                        dataset_type: str,
-                       device: T.device = T.device('cpu'),
                        batch_size: int = 32,
+                       device: T.device = T.device('cpu'),
                        shuffle: bool = True,
-                       num_workers: int = 4) -> DataLoader:
+                       num_workers: int = 0) -> DataLoader:
         assert dataset_type in self.df_dict, "Don't contain dataset type"
 
         self.device = device
-        ds = MovelenDataset(self.df_dict[dataset_type], self.pos_cat_names,
-                            self.neg_cat_names)
+        df = self.df_dict[dataset_type]
+        ds = MovelenDataset(df, self.pos_cat_names, self.neg_cat_names)
         return DataLoader(ds,
                           batch_size=batch_size,
                           shuffle=shuffle,
@@ -139,15 +139,3 @@ class TorchMovielen10k:
         pos_tensor = T.tensor(pos_batch, dtype=T.long, device=self.device)
         neg_tensor = T.tensor(neg_batch, dtype=T.long, device=self.device)
         return pos_tensor, neg_tensor
-
-
-if __name__ == "__main__":
-    file_path = Path('inputs/ml-100k/u.data')
-
-    movelen = TorchMovielen10k(file_path, user_min=4, item_min=4)
-    train_dl = movelen.get_dataloader('train', batch_size=4)
-
-    for batch in train_dl:
-        print(batch)
-        print(batch.device)
-        break

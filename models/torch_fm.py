@@ -1,4 +1,4 @@
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Optional
 
 import numpy as np
 import torch as T
@@ -12,6 +12,7 @@ from torch_scatter import scatter_mean
 from tqdm import tqdm
 
 from utils import build_logger
+from datasets.torch_movielen import TorchMovielen10k
 
 logger = build_logger()
 
@@ -79,33 +80,46 @@ class TorchFM(nn.Module):
 
 
 class FMLearner(object):
-    def __init__(self, model: TorchFM, optimzer: Callable,
-                 train_dl: DataLoader, valid_dl: DataLoader,
-                 test_dl: DataLoader):
-        self.model = model
-        self.train_dl = train_dl
-        self.valid_dl = valid_dl
-        self.test_dl = test_dl
+    def __init__(self,
+                 model: TorchFM,
+                 optimzer: Callable,
+                 databunch: TorchMovielen10k,
+                 device: T.device = T.device('cpu')) -> None:
+
+        self.model = model.to(device)
+        self.train_dl = databunch.get_dataloader('train', device=device)
+        self.valid_dl = databunch.get_dataloader('valid', device=device)
+        self.test_dl = databunch.get_dataloader('test', device=device)
         self.optimizer = optimzer
+
+        # Genrate accuracy per user to compute
+        users = databunch.cat_dict['user_id']
+        self.hit_per_user: T.Tensor = T.zeros(users.size)
+        self.user_counts: T.Tensor = T.zeros(users.size)
 
     def fit(
             self,
             epoch: int,
             lr: float,
+            log_dir: Optional[str] = None,
             lr_decay_factor: float = 1,
             lr_decay_freq: int = 1000,
             linear_reg: float = 0.0,
             factor_reg: float = 0.0,
     ):
-        op = self.optimizer(self.model.parameters, lr=lr)
+        op = self.optimizer(self.model.parameters(), lr=lr)
         schedular = optim.lr_scheduler.StepLR(op,
                                               lr_decay_freq,
                                               gamma=lr_decay_factor)
-        writer = SummaryWriter()
-        global_step = 0
+        writer = SummaryWriter(logdir=log_dir)
+        global_step = 0.0
 
         for cur_epoch in tqdm(range(epoch)):
             print('Epoch: {}'.format(cur_epoch))
+
+            # Train loop
+            self.hit_per_user.zero_()
+            train_loss = 0.0
             for step, (pos_batch, neg_batch) in enumerate(self.train_dl):
 
                 # zero the parameter gradients
@@ -121,33 +135,50 @@ class FMLearner(object):
                 op.step()
                 schedular.step()  # type: ignore
 
-                writer.add_scalar('loss',
-                                  bprloss.item(),
-                                  global_step=cur_epoch)
+                cur_loss = bprloss.item()
+                train_loss += cur_loss
+
+                writer.add_scalar('loss', cur_loss, global_step=global_step)
+                global_step += 1
 
                 with T.no_grad():
-                    auc = self.metric(pos_batch, pos_preds, neg_preds)
-                writer.add_scalar('train_accuracy',
-                                  auc.item(),
-                                  global_step=cur_epoch)
-                print("epoch: {}, train loss: {}, train auccurcy: {}".format(
-                    cur_epoch, bprloss.item(), auc.item()))
-            for step, (pos_batch, neg_batch) in enumerate(self.test_dl):
-                with T.no_grad():
+                    self.update_hit_counts(pos_batch, pos_preds, neg_preds)
+
+            train_loss = train_loss / (step + 1)
+            auc = self.compute_auc().item()
+
+            # Print loss and accuarcy
+            print("Epoch {}: train loss {}, train accuarcy {}".format(
+                cur_epoch, train_loss, auc))
+            writer.add_scalar('train/loss', train_loss, global_step=cur_epoch)
+            writer.add_scalar('train/accuarcy', auc, global_step=cur_epoch)
+            # Validation loop
+            with T.no_grad():
+
+                self.hit_per_user.zero_()
+                valid_loss = 0.0
+                for step, (pos_batch, neg_batch) in enumerate(self.test_dl):
                     pos_preds, neg_preds = self.model(pos_batch, neg_batch)
-                    valid_bprloss = self.criterion(pos_batch,
-                                                   neg_preds,
-                                                   linear_reg=linear_reg,
-                                                   factor_reg=factor_reg)
-                    valid_auc = self.metric(pos_batch, pos_preds, neg_preds)
-                writer.add_scalar('valid_loss',
-                                  valid_bprloss.item(),
+                    bprloss = self.criterion(pos_batch,
+                                             neg_preds,
+                                             linear_reg=linear_reg,
+                                             factor_reg=factor_reg)
+                    # Compute valid loss and accuarcy for
+                    cur_loss = bprloss.item()
+                    valid_loss += cur_loss
+                    self.update_hit_counts(pos_batch, pos_preds, neg_preds)
+
+                valid_loss = valid_loss / (step + 1)
+                valid_auc = self.compute_auc().item()
+                # Print loss and accuarcy
+                print("Epoch {}: valid loss {}, valid accuarcy {}".format(
+                    cur_epoch, valid_loss, valid_auc))
+                writer.add_scalar('valid/loss',
+                                  valid_loss,
                                   global_step=cur_epoch)
-                writer.add_scalar('valid_auc',
-                                  valid_auc.item(),
+                writer.add_scalar('valid/accuarcy',
+                                  valid_auc,
                                   global_step=cur_epoch)
-                print("epoch: {}, valid loss: {}, valid auccurcy: {}".format(
-                    cur_epoch, valid_bprloss.item(), valid_auc.item()))
 
         writer.close()
 
@@ -174,13 +205,17 @@ class FMLearner(object):
         bprloss = -bprloss
         return bprloss
 
-    def metric(self, pos_batch: T.Tensor, pos_preds: T.Tensor,
-               neg_preds: T.Tensor) -> T.Tensor:
+    def update_hit_counts(self, pos_batch: T.Tensor, pos_preds: T.Tensor,
+                          neg_preds: T.Tensor) -> None:
 
         binary_ranks = (pos_preds - neg_preds) > 0
         binary_ranks = binary_ranks.to(T.float)
         users_index = pos_batch[:, 0]
         users, user_counts = T.unique(users_index, return_counts=True)
-        auc_per_user = scatter_mean(binary_ranks, users_index)
-        auc = T.sum(auc_per_user) / users.size(0)
+        user_counts = user_counts.to(T.float)
+        self.hit_per_user.scatter_add_(0, users_index, binary_ranks)
+        self.user_counts.scatter_add_(0, users_index, user_counts)
+
+    def compute_auc(self) -> T.Tensor:
+        auc = T.mean(self.hit_per_user / self.user_counts)
         return auc
