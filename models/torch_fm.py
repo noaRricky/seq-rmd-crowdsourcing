@@ -82,15 +82,13 @@ class TorchFM(nn.Module):
 class FMLearner(object):
     def __init__(self,
                  model: TorchFM,
-                 optimzer: Callable,
                  databunch: TorchMovielen10k,
                  device: T.device = T.device('cpu')) -> None:
 
         self.model = model.to(device)
-        self.train_dl = databunch.get_dataloader('train', device=device)
-        self.valid_dl = databunch.get_dataloader('valid', device=device)
-        self.test_dl = databunch.get_dataloader('test', device=device)
-        self.optimizer = optimzer
+
+        ds_types = ['train', 'valid', 'test']
+        self.dl_dict = {ds: databunch.get_dataloader(ds) for ds in ds_types}
 
         # Genrate accuracy per user to compute
         users = databunch.cat_dict['user_id']
@@ -100,85 +98,27 @@ class FMLearner(object):
     def fit(
             self,
             epoch: int,
-            lr: float,
+            op: optim.optimizer.Optimizer,
             log_dir: Optional[str] = None,
             lr_decay_factor: float = 1,
             lr_decay_freq: int = 1000,
             linear_reg: float = 0.0,
             factor_reg: float = 0.0,
     ):
-        op = self.optimizer(self.model.parameters(), lr=lr)
-        schedular = optim.lr_scheduler.StepLR(op,
-                                              lr_decay_freq,
-                                              gamma=lr_decay_factor)
-        writer = SummaryWriter(logdir=log_dir)
-        global_step = 0.0
+        self._op = op
+        self._schedular = optim.lr_scheduler.StepLR(op,
+                                                    lr_decay_freq,
+                                                    gamma=lr_decay_factor)
+        self._writer = writer = SummaryWriter(logdir=log_dir)
+        self._global_step = 0
+        self._linear_reg = linear_reg
+        self._factor_reg = factor_reg
 
         for cur_epoch in tqdm(range(epoch)):
             print('Epoch: {}'.format(cur_epoch))
-
-            # Train loop
-            self.hit_per_user.zero_()
-            train_loss = 0.0
-            for step, (pos_batch, neg_batch) in enumerate(self.train_dl):
-
-                # zero the parameter gradients
-                op.zero_grad()
-
-                pos_preds, neg_preds = self.model(pos_batch, neg_batch)
-                bprloss = self.criterion(pos_preds,
-                                         neg_preds,
-                                         linear_reg=linear_reg,
-                                         factor_reg=factor_reg)
-
-                bprloss.backward()
-                op.step()
-                schedular.step()  # type: ignore
-
-                cur_loss = bprloss.item()
-                train_loss += cur_loss
-
-                writer.add_scalar('loss', cur_loss, global_step=global_step)
-                global_step += 1
-
-                with T.no_grad():
-                    self.update_hit_counts(pos_batch, pos_preds, neg_preds)
-
-            train_loss = train_loss / (step + 1)
-            auc = self.compute_auc().item()
-
-            # Print loss and accuarcy
-            print("Epoch {}: train loss {}, train accuarcy {}".format(
-                cur_epoch, train_loss, auc))
-            writer.add_scalar('train/loss', train_loss, global_step=cur_epoch)
-            writer.add_scalar('train/accuarcy', auc, global_step=cur_epoch)
-            # Validation loop
+            self._data_loop('train', cur_epoch)
             with T.no_grad():
-
-                self.hit_per_user.zero_()
-                valid_loss = 0.0
-                for step, (pos_batch, neg_batch) in enumerate(self.test_dl):
-                    pos_preds, neg_preds = self.model(pos_batch, neg_batch)
-                    bprloss = self.criterion(pos_batch,
-                                             neg_preds,
-                                             linear_reg=linear_reg,
-                                             factor_reg=factor_reg)
-                    # Compute valid loss and accuarcy for
-                    cur_loss = bprloss.item()
-                    valid_loss += cur_loss
-                    self.update_hit_counts(pos_batch, pos_preds, neg_preds)
-
-                valid_loss = valid_loss / (step + 1)
-                valid_auc = self.compute_auc().item()
-                # Print loss and accuarcy
-                print("Epoch {}: valid loss {}, valid accuarcy {}".format(
-                    cur_epoch, valid_loss, valid_auc))
-                writer.add_scalar('valid/loss',
-                                  valid_loss,
-                                  global_step=cur_epoch)
-                writer.add_scalar('valid/accuarcy',
-                                  valid_auc,
-                                  global_step=cur_epoch)
+                self._data_loop('valid', cur_epoch)
 
         writer.close()
 
@@ -219,3 +159,54 @@ class FMLearner(object):
     def compute_auc(self) -> T.Tensor:
         auc = T.mean(self.hit_per_user / self.user_counts)
         return auc
+
+    def _data_loop(self, ds_type: str, epoch: int) -> None:
+
+        dl = self.dl_dict[ds_type]
+        op = self._op
+        schedular = self._schedular
+        linear_reg = self._linear_reg
+        factor_reg = self._factor_reg
+        writer = self._writer
+        global_step = self._global_step
+        self.hit_per_user.zero_()
+        self.user_counts.zero_()
+        loss = 0.0
+
+        for step, (pos_batch, neg_batch) in enumerate(dl):
+
+            if ds_type == 'train':
+                op.zero_grad()
+
+            pos_preds, neg_preds = self.model(pos_batch, neg_batch)
+            bprloss = self.criterion(pos_preds, neg_preds, linear_reg,
+                                     factor_reg)
+
+            bprloss.backward()
+            op.step()
+            schedular.step()  # type: ignore
+
+            cur_loss = bprloss.item()
+            loss += cur_loss
+
+            if ds_type == 'train':
+                writer.add_scalar('loss', cur_loss, global_step=global_step)
+                print("Epoch {} step {}: training loss: {}".format(
+                    epoch, global_step, cur_loss))
+                global_step += 1
+                with T.no_grad():
+                    self.update_hit_counts(pos_batch, pos_preds, neg_preds)
+            else:
+                self.update_hit_counts(pos_batch, pos_preds, neg_preds)
+
+        loss = loss / (step + 1)
+        auc = self.compute_auc().item()
+
+        print("Epoch {e}: {t} loss {l}, {t} accuarcy {a}".format(e=epoch,
+                                                                 t=ds_type,
+                                                                 l=loss,
+                                                                 a=auc))
+        writer.add_scalar("{}/loss".format(ds_type), loss, global_step=epoch)
+        writer.add_scalar("{}/accuarcy".format(ds_type),
+                          auc,
+                          global_step=epoch)

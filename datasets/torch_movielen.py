@@ -116,26 +116,50 @@ class TorchMovielen10k:
             'valid': valid_df[cat_names],
             'test': test_df[cat_names]
         }
+        self._batch_size = 64
+        self._device = T.device('cpu')
+        self._shuffle = False
+        self._num_workers = 0
 
-    def get_dataloader(self,
-                       dataset_type: str,
-                       batch_size: int = 32,
-                       device: T.device = T.device('cpu'),
-                       shuffle: bool = True,
-                       num_workers: int = 0) -> DataLoader:
+    def batch(self, batch_size: int) -> TorchMovielen10k:
+        self._batch_size = batch_size
+        return self
+
+    def shuffle(self, shuffle: bool) -> TorchMovielen10k:
+        self._shuffle = shuffle
+        return self
+
+    def device(self, device: T.device) -> TorchMovielen10k:
+        self._device = device
+        return self
+
+    def workers(self, num_workers: int = 0) -> TorchMovielen10k:
+        self._num_workers = num_workers
+        return self
+
+    def get_dataloader(
+            self,
+            dataset_type: str,
+    ) -> DataLoader:
         assert dataset_type in self.df_dict, "Don't contain dataset type"
 
-        self.device = device
+        shuffle = self._shuffle
+        num_workers = self._num_workers
+        batch_size = self._batch_size
+        data_collate = self._data_collate
+
         df = self.df_dict[dataset_type]
         ds = MovelenDataset(df, self.pos_cat_names, self.neg_cat_names)
-        return DataLoader(ds,
-                          batch_size=batch_size,
-                          shuffle=shuffle,
-                          collate_fn=self.data_collate,
-                          num_workers=num_workers)
+        dl = DataLoader(ds,
+                        batch_size=batch_size,
+                        shuffle=shuffle,
+                        collate_fn=data_collate,
+                        num_workers=num_workers)
 
-    def data_collate(self, batch: List[np.ndarray]):
+        return dl
+
+    def _data_collate(self, batch: List[np.ndarray]):
         pos_batch, neg_batch = zip(*batch)
-        pos_tensor = T.tensor(pos_batch, dtype=T.long, device=self.device)
-        neg_tensor = T.tensor(neg_batch, dtype=T.long, device=self.device)
+        pos_tensor = T.tensor(pos_batch, dtype=T.long, device=self._device)
+        neg_tensor = T.tensor(neg_batch, dtype=T.long, device=self._device)
         return pos_tensor, neg_tensor
