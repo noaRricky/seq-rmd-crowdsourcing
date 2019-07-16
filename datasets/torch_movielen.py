@@ -116,26 +116,22 @@ class TorchMovielen10k:
             'valid': valid_df[cat_names],
             'test': test_df[cat_names]
         }
-        self._batch_size = 64
+        self._batch_size = 32
         self._device = T.device('cpu')
         self._shuffle = False
         self._num_workers = 0
 
-    def batch(self, batch_size: int) -> TorchMovielen10k:
+    def batch(self, batch_size: int) -> None:
         self._batch_size = batch_size
-        return self
 
-    def shuffle(self, shuffle: bool) -> TorchMovielen10k:
+    def shuffle(self, shuffle: bool) -> None:
         self._shuffle = shuffle
-        return self
 
-    def device(self, device: T.device) -> TorchMovielen10k:
+    def device(self, device: T.device) -> None:
         self._device = device
-        return self
 
-    def workers(self, num_workers: int = 0) -> TorchMovielen10k:
+    def workers(self, num_workers: int = 0) -> None:
         self._num_workers = num_workers
-        return self
 
     def get_dataloader(
             self,

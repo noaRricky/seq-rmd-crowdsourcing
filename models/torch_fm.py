@@ -98,7 +98,7 @@ class FMLearner(object):
     def fit(
             self,
             epoch: int,
-            op: optim.optimizer.Optimizer,
+            op: Optimizer,
             log_dir: Optional[str] = None,
             lr_decay_factor: float = 1,
             lr_decay_freq: int = 1000,
@@ -154,7 +154,7 @@ class FMLearner(object):
         users, user_counts = T.unique(users_index, return_counts=True)
         user_counts = user_counts.to(T.float)
         self.hit_per_user.scatter_add_(0, users_index, binary_ranks)
-        self.user_counts.scatter_add_(0, users_index, user_counts)
+        self.user_counts[users] += user_counts
 
     def compute_auc(self) -> T.Tensor:
         auc = T.mean(self.hit_per_user / self.user_counts)
