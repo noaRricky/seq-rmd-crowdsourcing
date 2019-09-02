@@ -30,7 +30,7 @@ class MovelenDataset(Dataset):
 
 
 class TorchMovielen10k:
-    def __init__(self, file_path: Path, user_min: int = 4, item_min=4):
+    def __init__(self, file_path: Path, user_min: int = 4, item_min: int = 4):
         df = pd.read_csv(file_path,
                          header=None,
                          sep='\t',

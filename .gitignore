@@ -1,7 +1,7 @@
 .venv/
 .vscode/
 inputs/
-notebooks/.ipynb_checkpoints
+**/.ipynb_checkpoints
 .mypy_cache
 .pytest_cache
 runs/
