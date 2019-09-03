@@ -14,19 +14,16 @@ from tqdm import tqdm
 
 from utils import build_logger
 from datasets.torch_movielen import TorchMovielen10k
+from .torch_fm import TorchFM
 
 logger = build_logger()
 
 
 class FMLearner(object):
-    def __init__(self,
-                 model: nn.Module,
-                 op: Optimizer,
-                 schedular: _LRScheduler,
-                 databunch: TorchMovielen10k,
-                 device: T.device = T.device('cpu')) -> None:
+    def __init__(self, model: TorchFM, op: Optimizer, schedular: _LRScheduler,
+                 databunch: TorchMovielen10k) -> None:
 
-        self.model = model.to(device)
+        self.model = model.to(databunch._device)
         self._op = op
         self._schedular = schedular
 
@@ -34,9 +31,9 @@ class FMLearner(object):
         self.dl_dict = {ds: databunch.get_dataloader(ds) for ds in ds_types}
 
         # Genrate accuracy per user to compute
-        users = databunch.cat_dict['user_id']
-        self.hit_per_user: T.Tensor = T.zeros(users.size)
-        self.user_counts: T.Tensor = T.zeros(users.size)
+        user_size = databunch.user_size
+        self.hit_per_user: T.Tensor = T.zeros(user_size)
+        self.user_counts: T.Tensor = T.zeros(user_size)
 
     def fit(
             self,
@@ -62,13 +59,15 @@ class FMLearner(object):
 
         writer.close()
 
-    def compute_l2_term(self, linear_reg: float = 0.0,
-                        factor_reg: float = 0.0) -> T.Tensor:
+    def compute_l2_term(self, linear_reg: float = 1.0,
+                        factor_reg: float = 1.0) -> T.Tensor:
+        param_linear = self.model.param_linear
+        param_factor = self.model.param_factor
+
         l2_term = T.zeros(1)
-        for emb in self.model.emb_linear_layer:
-            l2_term += linear_reg * T.sum(T.pow(emb.weight.data, 2))
-        for emb in self.model.emb_factor_layer:
-            l2_term += factor_reg * T.sum(T.pow(emb.weight.data, 2))
+        l2_term += linear_reg * T.sum(T.pow(param_linear, 2))
+        l2_term += factor_reg * T.sum(T.pow(param_factor, 2))
+
         return l2_term
 
     def criterion(
@@ -85,12 +84,11 @@ class FMLearner(object):
         bprloss = -bprloss
         return bprloss
 
-    def update_hit_counts(self, pos_batch: T.Tensor, pos_preds: T.Tensor,
+    def update_hit_counts(self, users_index: T.Tensor, pos_preds: T.Tensor,
                           neg_preds: T.Tensor) -> None:
 
         binary_ranks = (pos_preds - neg_preds) > 0
         binary_ranks = binary_ranks.to(T.float)
-        users_index = pos_batch[:, 0]
         users, user_counts = T.unique(users_index, return_counts=True)
         user_counts = user_counts.to(T.float)
         self.hit_per_user.scatter_add_(0, users_index, binary_ranks)
@@ -113,7 +111,7 @@ class FMLearner(object):
         self.user_counts.zero_()
         loss = 0.0
 
-        for step, (pos_batch, neg_batch) in enumerate(dl):
+        for step, (user_index, pos_batch, neg_batch) in enumerate(dl):
             op.zero_grad()
 
             pos_preds, neg_preds = self.model(pos_batch, neg_batch)
@@ -130,7 +128,7 @@ class FMLearner(object):
                 epoch, global_step, cur_loss))
             global_step += 1
             with T.no_grad():
-                self.update_hit_counts(pos_batch, pos_preds, neg_preds)
+                self.update_hit_counts(user_index, pos_preds, neg_preds)
 
         with T.no_grad():
             self.log_info(epoch, step + 1, loss, loop_type='train')
@@ -145,12 +143,13 @@ class FMLearner(object):
             self.user_counts.zero_()
             loss = 0.0
 
-            for step, (pos_batch, neg_batch) in enumerate(dl):
+            for step, (user_index, pos_batch, neg_batch) in enumerate(dl):
 
                 pos_preds, neg_preds = self.model(pos_batch, neg_batch)
                 bprloss = self.criterion(pos_preds, neg_preds, linear_reg,
                                          factor_reg)
                 loss += bprloss.item()
+                self.update_hit_counts(user_index, pos_preds, neg_preds)
 
             self.log_info(epoch, step + 1, loss, loop_type='valid')
 

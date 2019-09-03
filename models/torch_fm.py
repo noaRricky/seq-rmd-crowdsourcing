@@ -23,7 +23,7 @@ class TorchFM(nn.Module):
 
         # Linear terms
         pos_linear = T.mm(pos_feats, param_linear)
-        neg_lienar = T.mm(neg_feats, param_linear)
+        neg_linear = T.mm(neg_feats, param_linear)
 
         # Interactive terms
         pos_emb_mul = T.mm(pos_feats, param_factor)
@@ -34,6 +34,11 @@ class TorchFM(nn.Module):
         neg_emb_mul = T.mm(neg_feats, param_factor)
         term_1_neg = T.pow(T.sum(neg_emb_mul, dim=1, keepdim=True), 2)
         term_2_neg = T.sum(T.pow(neg_emb_mul, 2), dim=1, keepdim=True)
-        neg_preds = neg_lienar + 0.5 * (term_2_neg - term_2_neg)
+        # Shape: (batch_size, 1)
+        neg_preds = neg_linear + 0.5 * (term_2_neg - term_2_neg)
+
+        # Shape: (batch_size)
+        pos_preds = pos_preds.squeeze()
+        neg_preds = neg_preds.squeeze()
 
         return pos_preds, neg_preds

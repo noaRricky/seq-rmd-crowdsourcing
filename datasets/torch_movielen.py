@@ -116,6 +116,7 @@ class TorchMovielen10k:
             'test': test_df[cat_names]
         }
         self.feat_dim = user_counts.size + 2 * item_counts.size
+        self.user_size = user_counts.size
         self._batch_size = 32
         self._shuffle = False
         self._num_workers = 0
