@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List, Dict
 
 import numpy as np
+import scipy.sparse as sp
 import pandas as pd
 from sklearn.preprocessing import OrdinalEncoder
 import torch as T
@@ -14,19 +15,14 @@ logger = build_logger()
 
 
 class MovelenDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, pos_names: List[str],
-                 neg_names: List[str]):
-        self.pos_names = pos_names
-        self.neg_names = neg_names
+    def __init__(self, df: pd.DataFrame):
         self.df = df
 
     def __len__(self):
         return self.df.shape[0]
 
     def __getitem__(self, idx):
-        pos_data = self.df[self.pos_names].iloc[idx].values
-        neg_data = self.df[self.neg_names].iloc[idx].values
-        return pos_data, neg_data
+        return self.df.iloc[idx]
 
 
 class TorchMovielen10k:
@@ -55,6 +51,9 @@ class TorchMovielen10k:
 
         logger.info("Filter user size: {}".format(user_counts.size))
         logger.info("Filter item size: {}".format(item_counts.size))
+
+        user_one_hot = sp.identity(user_counts.size).tocsr()
+        item_one_hot = sp.identity(item_counts.size).tocsr()
 
         # remove sparse item
         df = df[df.user_id.isin(user_counts.index)]
@@ -116,10 +115,12 @@ class TorchMovielen10k:
             'valid': valid_df[cat_names],
             'test': test_df[cat_names]
         }
+        self.feat_dim = user_counts.size + 2 * item_counts.size
         self._batch_size = 32
-        self._device = T.device('cpu')
         self._shuffle = False
         self._num_workers = 0
+        self._user_one_hot = user_one_hot
+        self._item_one_hot = item_one_hot
 
     def batch(self, batch_size: int) -> None:
         self._batch_size = batch_size
@@ -145,7 +146,7 @@ class TorchMovielen10k:
         data_collate = self._data_collate
 
         df = self.df_dict[dataset_type]
-        ds = MovelenDataset(df, self.pos_cat_names, self.neg_cat_names)
+        ds = MovelenDataset(df)
         dl = DataLoader(ds,
                         batch_size=batch_size,
                         shuffle=shuffle,
@@ -155,7 +156,28 @@ class TorchMovielen10k:
         return dl
 
     def _data_collate(self, batch: List[np.ndarray]):
-        pos_batch, neg_batch = zip(*batch)
-        pos_tensor = T.tensor(pos_batch, dtype=T.long, device=self._device)
-        neg_tensor = T.tensor(neg_batch, dtype=T.long, device=self._device)
+        device = self._device
+
+        df_batch = pd.DataFrame(batch)
+        user_vector = self._user_one_hot[df_batch['user_id']]
+        item_vector = self._item_one_hot[df_batch['item_id']]
+        prev_vector = self._item_one_hot[df_batch['prev_item_id']]
+        neg_vector = self._item_one_hot[df_batch['neg_item_id']]
+
+        pos_feats_matrix = sp.hstack([user_vector, prev_vector, item_vector])
+        neg_feats_matrix = sp.hstack([user_vector, prev_vector, neg_vector])
+
+        pos_index_array: np.ndarray = np.vstack(pos_feats_matrix.nonzero())
+        pos_index = T.LongTensor(pos_index_array.tolist())  # type: ignore
+        pos_value = T.FloatTensor(pos_feats_matrix.data)  # type: ignore
+        pos_tensor = T.sparse.FloatTensor(pos_index, pos_value)  # type: ignore
+
+        neg_index_array: np.ndarray = np.vstack(neg_feats_matrix.nonzero())
+        neg_index = T.LongTensor(neg_index_array.tolist())  # type: ignore
+        neg_value = T.FloatTensor(neg_feats_matrix.data)  # type: ignore
+        neg_tensor = T.sparse.FloatTensor(neg_index, neg_value)  # type: ignore
+
+        pos_tensor = pos_tensor.to(device)
+        neg_tensor = neg_tensor.to(device)
+
         return pos_tensor, neg_tensor
