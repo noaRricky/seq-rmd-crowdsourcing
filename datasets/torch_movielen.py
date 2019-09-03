@@ -166,18 +166,26 @@ class TorchMovielen10k:
 
         pos_feats_matrix = sp.hstack([user_vector, prev_vector, item_vector])
         neg_feats_matrix = sp.hstack([user_vector, prev_vector, neg_vector])
+        tensor_size = T.Size(pos_feats_matrix.shape)
+
+        user_tensor = T.tensor(df_batch['user_id'].values, dtype=T.long)
 
         pos_index_array: np.ndarray = np.vstack(pos_feats_matrix.nonzero())
-        pos_index = T.LongTensor(pos_index_array.tolist())  # type: ignore
-        pos_value = T.FloatTensor(pos_feats_matrix.data)  # type: ignore
-        pos_tensor = T.sparse.FloatTensor(pos_index, pos_value)  # type: ignore
+        pos_index = T.tensor(pos_index_array.tolist())
+        pos_value = T.tensor(pos_feats_matrix.data, dtype=T.double)
+        pos_tensor = T.sparse_coo_tensor(pos_index,
+                                         pos_value,
+                                         size=tensor_size)
 
         neg_index_array: np.ndarray = np.vstack(neg_feats_matrix.nonzero())
-        neg_index = T.LongTensor(neg_index_array.tolist())  # type: ignore
-        neg_value = T.FloatTensor(neg_feats_matrix.data)  # type: ignore
-        neg_tensor = T.sparse.FloatTensor(neg_index, neg_value)  # type: ignore
+        neg_index = T.tensor(neg_index_array.tolist())
+        neg_value = T.tensor(neg_feats_matrix.data, dtype=T.double)
+        neg_tensor = T.sparse_coo_tensor(neg_index,
+                                         neg_value,
+                                         size=tensor_size)
 
+        user_tensor = user_tensor.to(device)
         pos_tensor = pos_tensor.to(device)
         neg_tensor = neg_tensor.to(device)
 
-        return pos_tensor, neg_tensor
+        return user_tensor, pos_tensor, neg_tensor
