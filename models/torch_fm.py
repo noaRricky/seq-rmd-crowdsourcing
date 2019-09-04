@@ -7,13 +7,17 @@ import torch.optim as optim
 
 
 class TorchFM(nn.Module):
-    def __init__(self, feature_dim: int, num_dims: int, init_mean: int):
+    def __init__(self, feature_dim: int, num_dim: int, init_mean: int):
         super(TorchFM, self).__init__()
 
         var_linear = T.rand(feature_dim, 1,
                             dtype=T.double) * init_mean * 2 - init_mean
-        var_emb = T.rand(feature_dim, num_dims,
+        var_emb = T.rand(feature_dim, num_dim,
                          dtype=T.double) * init_mean * 2 - init_mean
+
+        self._feature_dim = feature_dim
+        self._num_dim = num_dim
+        self._init_mean = init_mean
         self.param_linear = nn.Parameter(var_linear)
         self.param_emb = nn.Parameter(var_emb)
 
@@ -46,6 +50,7 @@ class TorchFM(nn.Module):
 
 class TorchPrmeFM(TorchFM):
     def forward(self, pos_feats, neg_feats):
+        feature_dim = self._feature_dim
         param_linear = self.param_linear
         param_emb = self.param_emb
 
@@ -56,12 +61,15 @@ class TorchPrmeFM(TorchFM):
         # Interactive term
         var_emb_product = T.sum(T.pow(param_emb, 2), dim=1, keepdim=True)
 
+        # generate sum value
+        var_sum_op = T.ones(feature_dim, 1, dtype=T.double)
+
         # Common term positive
-        pos_feats_sum = T.sum(pos_feats, dim=1, keepdim=True)
+        pos_feats_sum = T.mm(pos_feats, var_sum_op)
         pos_emb_mul = T.mm(pos_feats, param_emb)
 
         # Common term negtive
-        neg_feats_sum = T.sum(neg_feats, dim=1, keepdim=True)
+        neg_feats_sum = T.mm(neg_feats, var_sum_op)
         neg_emb_mul = T.mm(neg_feats, param_emb)
 
         # Term 1 pos
@@ -93,6 +101,7 @@ class TorchPrmeFM(TorchFM):
 
 class TorchHrmFM(TorchFM):
     def forward(self, pos_feats, neg_feats):
+        feature_dim = self._feature_dim
         param_linear = self.param_linear
         param_emb = self.param_emb
 
@@ -104,13 +113,14 @@ class TorchHrmFM(TorchFM):
         # First define common terms that are used by future calculations
         # Common terms
         var_emb_product = T.sum(T.pow(param_emb, 2), dim=1, keepdim=True)
+        var_sum_op = T.ones(feature_dim, 1, dtype=T.double)
 
         # Common term positive
-        pos_feats_sum = T.sum(pos_feats, dim=1, keepdim=True)
+        pos_feats_sum = T.mm(pos_feats, var_sum_op)
         pos_emb_mul = T.mm(pos_feats, param_emb)
 
         # Common terms negative
-        neg_feats_sum = T.sum(neg_feats, dim=1, keepdim=True)
+        neg_feats_sum = T.mm(neg_feats, var_sum_op)
         neg_emb_mul = T.mm(neg_feats, param_emb)
 
         # Term 1 pos
@@ -151,6 +161,7 @@ class TorchTransFM(TorchFM):
         self.param_trans = nn.Parameter(var_trans)
 
     def forward(self, pos_feats, neg_feats):
+        feature_dim = self._feature_dim
         param_linear = self.param_linear
         param_emb = self.param_emb
         param_trans = self.param_trans
@@ -159,22 +170,26 @@ class TorchTransFM(TorchFM):
         pos_linear = T.mm(pos_feats, param_linear)
         neg_linear = T.mm(neg_feats, param_linear)
 
+        # print(pos_linear.shape)
+        # print(neg_linear.shape)
+
         # Interaction terms
         # First define common terms that are used by future calculations
         # Common terms
+        var_sum_op = T.ones(feature_dim, 1, dtype=T.double)
         var_emb_product = T.sum(T.pow(param_emb, 2), dim=1, keepdim=True)
         var_trans_product = T.sum(T.pow(param_trans, 2), dim=1, keepdim=True)
-        var_emb_trans_product = T.sum(param_emb * param_emb,
+        var_emb_trans_product = T.sum(param_emb * param_trans,
                                       dim=1,
                                       keepdim=True)
 
         # Common term positive
-        pos_feats_sum = T.sum(pos_feats, dim=1, keepdim=True)
+        pos_feats_sum = T.mm(pos_feats, var_sum_op)
         pos_emb_mul = T.mm(pos_feats, param_emb)
         pos_trans_mul = T.mm(pos_feats, param_trans)
 
         # Common terms negative
-        neg_feats_sum = T.sum(neg_feats, dim=1, keepdim=True)
+        neg_feats_sum = T.mm(neg_feats, var_sum_op)
         neg_emb_mul = T.mm(neg_feats, param_emb)
         neg_trans_mul = T.mm(neg_feats, param_trans)
 
@@ -187,7 +202,7 @@ class TorchTransFM(TorchFM):
         term_1_neg = prod_term_neg * neg_feats_sum
 
         # Term 2 pos
-        prod_term_pos = T.mm(pos_feats, param_trans)
+        prod_term_pos = T.mm(pos_feats, var_trans_product)
         term_2_pos = prod_term_pos * pos_feats_sum
 
         # Term 2 neg
