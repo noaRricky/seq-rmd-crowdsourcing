@@ -20,20 +20,26 @@ logger = build_logger()
 
 
 class FMLearner(object):
-    def __init__(self, model: TorchFM, op: Optimizer, schedular: _LRScheduler,
-                 databunch: TorchMovielen10k) -> None:
+    def __init__(
+            self,
+            model: TorchFM,
+            op: Optimizer,
+            schedular: _LRScheduler,
+            databunch: TorchMovielen10k,
+    ) -> None:
 
+        ds_types = ['train', 'valid', 'test']
+        # Genrate accuracy per user to compute
+        user_size = databunch.user_size
+
+        self.dl_dict = {ds: databunch.get_dataloader(ds) for ds in ds_types}
         self.model = model.to(databunch._device)
         self._op = op
         self._schedular = schedular
-
-        ds_types = ['train', 'valid', 'test']
-        self.dl_dict = {ds: databunch.get_dataloader(ds) for ds in ds_types}
-
-        # Genrate accuracy per user to compute
-        user_size = databunch.user_size
         self.hit_per_user: T.Tensor = T.zeros(user_size)
         self.user_counts: T.Tensor = T.zeros(user_size)
+        self.best_val_auc = 0.
+        self.best_epoch = 0.
 
     def fit(
             self,
@@ -62,11 +68,11 @@ class FMLearner(object):
     def compute_l2_term(self, linear_reg: float = 1.0,
                         factor_reg: float = 1.0) -> T.Tensor:
         param_linear = self.model.param_linear
-        param_factor = self.model.param_factor
+        param_emb = self.model.param_emb
 
-        l2_term = T.zeros(1)
+        l2_term = T.zeros(1, dtype=T.double)
         l2_term += linear_reg * T.sum(T.pow(param_linear, 2))
-        l2_term += factor_reg * T.sum(T.pow(param_factor, 2))
+        l2_term += factor_reg * T.sum(T.pow(param_emb, 2))
 
         return l2_term
 
@@ -95,7 +101,10 @@ class FMLearner(object):
         self.user_counts[users] += user_counts
 
     def compute_auc(self) -> T.Tensor:
-        auc = T.mean(self.hit_per_user / self.user_counts)
+        rate = self.hit_per_user / self.user_counts
+        rate[T.isnan(rate)] = 0
+        rate[T.isinf(rate)] = 0
+        auc = T.mean(rate)
         return auc
 
     def train_loop(self, epoch: int) -> None:
@@ -167,3 +176,7 @@ class FMLearner(object):
         writer.add_scalar("{}/accuarcy".format(loop_type),
                           auc,
                           global_step=epoch)
+
+        if loop_type == 'valid' and auc > self.best_val_auc:
+            self.best_val_auc = auc
+            self.best_epoch = epoch
