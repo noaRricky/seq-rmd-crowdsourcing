@@ -9,7 +9,6 @@ from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
-from torch_scatter import scatter_mean
 from tqdm import tqdm
 
 from utils import build_logger
