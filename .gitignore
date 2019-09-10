@@ -1,5 +1,6 @@
 .venv/
 .vscode/
+.idea/
 inputs/
 **/.ipynb_checkpoints
 .mypy_cache

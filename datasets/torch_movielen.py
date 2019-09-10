@@ -9,20 +9,10 @@ import torch as T
 from torch.utils.data import Dataset, DataLoader
 from torch import Tensor
 
+from .base import DFDataset
 from utils import build_logger
 
 logger = build_logger()
-
-
-class MovelenDataset(Dataset):
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
-
-    def __len__(self):
-        return self.df.shape[0]
-
-    def __getitem__(self, idx):
-        return self.df.iloc[idx]
 
 
 class TorchMovielen10k:
@@ -74,7 +64,7 @@ class TorchMovielen10k:
         data_collate = self._data_collate
 
         df = self.df_dict[dataset_type]
-        ds = MovelenDataset(df)
+        ds = DFDataset(df)
         dl = DataLoader(ds,
                         batch_size=batch_size,
                         shuffle=shuffle,
@@ -117,6 +107,7 @@ class TorchMovielen10k:
         df = df[df.item_id.isin(item_counts.index)]
 
         # Add previous item
+        df = df.sort_values(by=['user_id', 'time'])
         df['prev_item_id'] = df.item_id
         df['prev_item_id'] = df['prev_item_id'].shift(
             periods=1).fillna(0).astype(np.int32)
@@ -134,7 +125,7 @@ class TorchMovielen10k:
         valid_df = remain_df[~duplicate_mask]
 
         # Set first item non for each user
-        train_df.sort_values(by=['user_id'])
+        train_df.sort_values(by=['user_id', 'time'])
         first_mask = ~train_df.duplicated(subset=['user_id'], keep='first')
         train_df['prev_item_id'][first_mask] = -1
 
@@ -184,7 +175,7 @@ class TorchMovielen10k:
         self._item_df = item_df
         self._item_seq_size = item_seq_size
 
-    def _data_collate(self, batch: List[np.ndarray]):
+    def _data_collate(self, batch: List[pd.Series]):
         device = self._device
 
         df_batch = pd.DataFrame(batch)
