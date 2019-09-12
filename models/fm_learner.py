@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from utils import build_logger
 from datasets.torch_movielen import TorchMovielen10k
-from .torch_fm import TorchFM
+from .torch_fm import TorchFM, TorchTransFM
 
 logger = build_logger()
 
@@ -30,9 +30,10 @@ class FMLearner(object):
         ds_types = ['train', 'valid', 'test']
         # Genrate accuracy per user to compute
         user_size = databunch.user_size
+        device = databunch.device
 
         self.dl_dict = {ds: databunch.get_dataloader(ds) for ds in ds_types}
-        self.model = model.to(databunch._device)
+        self.model = model.to(device)
         self._op = op
         self._schedular = schedular
         self.hit_per_user: T.Tensor = T.zeros(user_size)
@@ -43,17 +44,15 @@ class FMLearner(object):
     def fit(
             self,
             epoch: int,
+            loss_callback: Callable[[nn.Module, T.Tensor, T.Tensor], T.Tensor],
             log_dir: Optional[str] = None,
-            linear_reg: float = 0.0,
-            factor_reg: float = 0.0,
     ):
         # self._schedular = optim.lr_scheduler.StepLR(op,
         #                                             lr_decay_freq,
         #                                             gamma=lr_decay_factor)
         self._writer = writer = SummaryWriter(logdir=log_dir)
         self._global_step = 0
-        self._linear_reg = linear_reg
-        self._factor_reg = factor_reg
+        self._loss_callback = loss_callback
         schedular = self._schedular
 
         for cur_epoch in tqdm(range(epoch)):
@@ -64,33 +63,12 @@ class FMLearner(object):
 
         writer.close()
 
-    def compute_l2_term(self, linear_reg: float = 1.0,
-                        factor_reg: float = 1.0) -> T.Tensor:
-        param_linear = self.model.param_linear
-        param_emb = self.model.param_emb
-
-        l2_term = T.zeros(1, dtype=T.double)
-        l2_term += linear_reg * T.sum(T.pow(param_linear, 2))
-        l2_term += factor_reg * T.sum(T.pow(param_emb, 2))
-
-        return l2_term
-
-    def criterion(
-            self,
-            pos_preds: T.Tensor,
-            neg_preds: T.Tensor,
-            linear_reg: float = 0.0,
-            factor_reg: float = 0.0,
-    ) -> T.Tensor:
-        l2_reg = self.compute_l2_term(linear_reg=linear_reg,
-                                      factor_reg=factor_reg)
-        bprloss = T.sum(
-            T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))) - l2_reg
-        bprloss = -bprloss
-        return bprloss
-
     def update_hit_counts(self, users_index: T.Tensor, pos_preds: T.Tensor,
                           neg_preds: T.Tensor) -> None:
+
+        users_index = users_index.to(T.device('cpu'))
+        pos_preds = pos_preds.to(T.device('cpu'))
+        neg_preds = neg_preds.to(T.device('cpu'))
 
         binary_ranks = (pos_preds - neg_preds) > 0
         binary_ranks = binary_ranks.to(T.float)
@@ -111,8 +89,7 @@ class FMLearner(object):
         dl = self.dl_dict['train']
         op = self._op
         schedular = self._schedular
-        linear_reg = self._linear_reg
-        factor_reg = self._factor_reg
+        loss_callback = self._loss_callback
         writer = self._writer
         global_step = self._global_step
         self.hit_per_user.zero_()
@@ -123,8 +100,7 @@ class FMLearner(object):
             op.zero_grad()
 
             pos_preds, neg_preds = self.model(pos_batch, neg_batch)
-            bprloss = self.criterion(pos_preds, neg_preds, linear_reg,
-                                     factor_reg)
+            bprloss = loss_callback(self.model, pos_preds, neg_preds)
             bprloss.backward()
             op.step()
 
@@ -144,8 +120,7 @@ class FMLearner(object):
     def valid_loop(self, epoch: int) -> None:
         with T.no_grad():
             dl = self.dl_dict['valid']
-            linear_reg = self._linear_reg
-            factor_reg = self._factor_reg
+            loss_callback = self._loss_callback
             writer = self._writer
             self.hit_per_user.zero_()
             self.user_counts.zero_()
@@ -154,8 +129,7 @@ class FMLearner(object):
             for step, (user_index, pos_batch, neg_batch) in enumerate(dl):
 
                 pos_preds, neg_preds = self.model(pos_batch, neg_batch)
-                bprloss = self.criterion(pos_preds, neg_preds, linear_reg,
-                                         factor_reg)
+                bprloss = loss_callback(self.model, pos_preds, neg_preds)
                 loss += bprloss.item()
                 self.update_hit_counts(user_index, pos_preds, neg_preds)
 
@@ -179,3 +153,32 @@ class FMLearner(object):
         if loop_type == 'valid' and auc > self.best_val_auc:
             self.best_val_auc = auc
             self.best_epoch = epoch
+
+
+def simple_loss(linear_reg: float, emb_reg: float, model: TorchFM,
+                pos_preds: T.Tensor, neg_preds: T.Tensor) -> T.Tensor:
+    param_linear = model.param_linear
+    param_emb = model.param_emb
+
+    l2_term = linear_reg * T.sum(T.pow(param_linear, 2))
+    l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
+
+    bprloss = T.sum(T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))) - l2_term
+    bprloss = -1 * bprloss
+    return bprloss
+
+
+def trans_loss(linear_reg: float, emb_reg: float, trans_reg: float,
+               model: TorchTransFM, pos_preds: T.Tensor,
+               neg_preds: T.Tensor) -> T.Tensor:
+    param_linear = model.param_linear
+    param_emb = model.param_linear
+    param_trans = model.param_trans
+
+    l2_term = linear_reg * T.sum(T.pow(param_linear, 2))
+    l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
+    l2_term += trans_reg * T.sum(T.pow(param_trans, 2))
+
+    bprloss = T.sum(T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))) - l2_term
+    bprloss = -1 * bprloss
+    return bprloss

@@ -9,13 +9,13 @@ import torch as T
 from torch.utils.data import Dataset, DataLoader
 from torch import Tensor
 
-from .base import DFDataset
+from .base import DFDataset, DataBunch
 from utils import build_logger
 
 logger = build_logger()
 
 
-class TorchMovielen10k:
+class TorchMovielen10k(DataBunch):
     def __init__(self,
                  data_path: Path,
                  item_path: Optional[Path] = None,
@@ -29,49 +29,16 @@ class TorchMovielen10k:
         # self.user_size = user_counts.size
         self._data_path = data_path
         self._item_path = item_path
-        self._batch_size = 32
-        self._shuffle = False
-        self._num_workers = 0
-        self._device = T.device('cpu')
+        self.batch_size = 32
+        self.shuffle = False
+        self.num_workers = 0
+        self.device = T.device('cpu')
         self.feat_dim = self.user_size + 2 * self.item_size
         if item_path:
             self.feat_dim += 2 * self._item_seq_size
 
         # self._user_one_hot = user_one_hot
         # self._item_one_hot = item_one_hot
-
-    def batch(self, batch_size: int) -> None:
-        self._batch_size = batch_size
-
-    def shuffle(self, shuffle: bool) -> None:
-        self._shuffle = shuffle
-
-    def device(self, device: T.device) -> None:
-        self._device = device
-
-    def workers(self, num_workers: int = 0) -> None:
-        self._num_workers = num_workers
-
-    def get_dataloader(
-            self,
-            dataset_type: str,
-    ) -> DataLoader:
-        assert dataset_type in self.df_dict, "Don't contain dataset type"
-
-        shuffle = self._shuffle
-        num_workers = self._num_workers
-        batch_size = self._batch_size
-        data_collate = self._data_collate
-
-        df = self.df_dict[dataset_type]
-        ds = DFDataset(df)
-        dl = DataLoader(ds,
-                        batch_size=batch_size,
-                        shuffle=shuffle,
-                        collate_fn=data_collate,
-                        num_workers=num_workers)
-
-        return dl
 
     def _read_data_csv(self,
                        data_path: Path,
@@ -138,7 +105,7 @@ class TorchMovielen10k:
         user_encoder.fit(train_df[['user_id']])
         item_encoder.fit(train_df[['item_id']])
 
-        self.df_dict: Dict[str, pd.DataFrame] = {
+        self._df_dict: Dict[str, pd.DataFrame] = {
             'train': train_df[cat_names],
             'valid': valid_df[cat_names],
             'test': test_df[cat_names]
@@ -176,7 +143,7 @@ class TorchMovielen10k:
         self._item_seq_size = item_seq_size
 
     def _data_collate(self, batch: List[pd.Series]):
-        device = self._device
+        device = self.device
 
         df_batch = pd.DataFrame(batch)
 
@@ -234,7 +201,7 @@ if __name__ == "__main__":
     item_path = Path("./inputs/ml-100k/u.item")
     databunch = TorchMovielen10k(data_path, item_path)
 
-    train_dl = databunch.get_dataloader(dataset_type='train')
+    train_dl = databunch.get_dataloader(ds_type='train')
     train_it = iter(train_dl)
 
     print(train_it.next())  # type: ignore

@@ -15,3 +15,7 @@
 - split train, valid, test
 - get categories
 - add first nan item
+
+## Tips
+
+while removing the item and user whose apperance is less than 4 will also change other counts

@@ -1,9 +1,10 @@
 .venv/
 .vscode/
 .idea/
-inputs/
-**/.ipynb_checkpoints
 .mypy_cache
 .pytest_cache
-runs/
+**/.ipynb_checkpoints
+**/.pytest_cache
 **/__pycache__
+inputs/
+runs/
