@@ -10,12 +10,12 @@ import torch as T
 from torch.utils.data import DataLoader
 
 from utils import build_logger
-from datasets.base import DFDataset
+from datasets.base import DFDataset, DataBunch
 
 logger = build_logger()
 
 
-class TorchTopcoder(object):
+class TorchTopcoder(DataBunch):
     def __init__(self,
                  regs_path: Path,
                  chag_path: Optional[Path] = None,
@@ -36,32 +36,12 @@ class TorchTopcoder(object):
         self._regs_path = regs_path
         self._chag_path = chag_path
 
-    def get_dataloader(
-            self,
-            dataset_type: str,
-    ) -> DataLoader:
-        assert dataset_type in self._df_dict, "Don't contain dataset type"
-
-        shuffle = self.shuffle
-        num_workers = self.num_workers
-        batch_size = self.batch_size
-        data_collate = self._data_collate
-
-        df = self._df_dict[dataset_type]
-        ds = DFDataset(df)
-        dl = DataLoader(ds,
-                        batch_size=batch_size,
-                        shuffle=shuffle,
-                        collate_fn=data_collate,
-                        num_workers=num_workers)
-
-        return dl
-
     def _read_regs_csv(self, regs_path: Path, regs_min: int,
                        chag_min: int) -> None:
         # Read dataframe
         regs_df = pd.read_csv(regs_path)
-        regs_df['date'] = pd.to_datetime(regs_df['date'], infer_datetime_format=True)
+        regs_df['date'] = pd.to_datetime(regs_df['date'],
+                                         infer_datetime_format=True)
 
         # Print information
         logger.info(f"Read dataset in {regs_path}")
@@ -120,6 +100,7 @@ class TorchTopcoder(object):
         }
         self._regs_encoder = regs_encoder
         self._chag_encoder = chag_encoder
+        self.user_size = regs_encoder.categories_[0].size
         self._regs_size = regs_encoder.categories_[0].size
         self._chag_size = chag_encoder.categories_[0].size
 
@@ -154,10 +135,6 @@ class TorchTopcoder(object):
         regs_encoder = self._regs_encoder
         chag_encoder = self._chag_encoder
 
-        chag_df = self._chag_df
-        tech_binarizer = self._tech_binarizer
-        plat_binarizer = self._plat_binarizer
-
         df = pd.DataFrame(batch)
         row_num = df.shape[0]
 
@@ -175,6 +152,10 @@ class TorchTopcoder(object):
         neg_feat_matrix = sp.hstack([regs_vector, prev_vector, negi_vector])
 
         if self._chag_path:
+            chag_df = self._chag_df
+            tech_binarizer = self._tech_binarizer
+            plat_binarizer = self._plat_binarizer
+
             batch_chag_df = chag_df.loc[df['challengeId']]
             chag_tech_matrix = tech_binarizer.transform(
                 batch_chag_df['technologies'])
@@ -200,7 +181,7 @@ class TorchTopcoder(object):
                 negi_tech_matrix, negi_plat_matrix
             ])
 
-        user_tensor = T.tensor(regs_vector.indices)
+        user_tensor = T.tensor(regs_vector.indices, dtype=T.long)
         pos_tensor = self._build_feat_tensor(pos_feat_matrix)
         neg_tensor = self._build_feat_tensor(neg_feat_matrix)
 
@@ -214,7 +195,7 @@ class TorchTopcoder(object):
         feat_index_list = feat_matrix.nonzero()
         feat_index_array: np.ndarray = np.vstack(feat_index_list)
 
-        feat_index = T.tensor(feat_index_array.tolist())
+        feat_index = T.tensor(feat_index_array.tolist(), dtype=T.long)
         feat_value = T.tensor(feat_matrix.data, dtype=T.double)
         feat_tensor = T.sparse_coo_tensor(feat_index,
                                           feat_value,
