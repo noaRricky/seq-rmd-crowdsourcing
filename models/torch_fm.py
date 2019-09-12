@@ -48,7 +48,21 @@ class TorchFM(nn.Module):
         return pos_preds, neg_preds
 
 
-class TorchPrmeFM(TorchFM):
+class TorchPrmeFM(nn.Module):
+    def __init__(self, feature_dim: int, num_dim: int, init_mean: int):
+        super(TorchPrmeFM, self).__init__()
+
+        var_linear = T.rand(feature_dim, 1,
+                            dtype=T.double) * init_mean * 2 - init_mean
+        var_emb = T.rand(feature_dim, num_dim,
+                         dtype=T.double) * init_mean * 2 - init_mean
+
+        self._feature_dim = feature_dim
+        self._num_dim = num_dim
+        self._init_mean = init_mean
+        self.param_linear = nn.Parameter(var_linear)
+        self.param_emb = nn.Parameter(var_emb)
+
     def forward(self, pos_feats, neg_feats):
         feature_dim = self._feature_dim
         param_linear = self.param_linear
@@ -62,7 +76,9 @@ class TorchPrmeFM(TorchFM):
         var_emb_product = T.sum(T.pow(param_emb, 2), dim=1, keepdim=True)
 
         # generate sum value
-        var_sum_op = T.ones(feature_dim, 1, dtype=T.double)
+        var_sum_op = T.ones((feature_dim, 1),
+                            dtype=T.double,
+                            device=pos_feats.device)
 
         # Common term positive
         pos_feats_sum = T.mm(pos_feats, var_sum_op)
@@ -99,7 +115,21 @@ class TorchPrmeFM(TorchFM):
         return pos_preds, neg_preds
 
 
-class TorchHrmFM(TorchFM):
+class TorchHrmFM(nn.Module):
+    def __init__(self, feature_dim: int, num_dim: int, init_mean: int):
+        super(TorchHrmFM, self).__init__()
+
+        var_linear = T.rand(feature_dim, 1,
+                            dtype=T.double) * init_mean * 2 - init_mean
+        var_emb = T.rand(feature_dim, num_dim,
+                         dtype=T.double) * init_mean * 2 - init_mean
+
+        self._feature_dim = feature_dim
+        self._num_dim = num_dim
+        self._init_mean = init_mean
+        self.param_linear = nn.Parameter(var_linear)
+        self.param_emb = nn.Parameter(var_emb)
+
     def forward(self, pos_feats, neg_feats):
         feature_dim = self._feature_dim
         param_linear = self.param_linear
@@ -113,7 +143,9 @@ class TorchHrmFM(TorchFM):
         # First define common terms that are used by future calculations
         # Common terms
         var_emb_product = T.sum(T.pow(param_emb, 2), dim=1, keepdim=True)
-        var_sum_op = T.ones(feature_dim, 1, dtype=T.double)
+        var_sum_op = T.ones((feature_dim, 1),
+                            dtype=T.double,
+                            device=pos_feats.device)
 
         # Common term positive
         pos_feats_sum = T.mm(pos_feats, var_sum_op)
@@ -152,11 +184,22 @@ class TorchHrmFM(TorchFM):
         return pos_preds, neg_preds
 
 
-class TorchTransFM(TorchFM):
-    def __init__(self, feature_dim: int, num_dims: int, init_mean: int):
-        super(TorchTransFM, self).__init__(feature_dim, num_dims, init_mean)
+class TorchTransFM(nn.Module):
+    def __init__(self, feature_dim: int, num_dim: int, init_mean: int):
+        super(TorchTransFM, self).__init__()
 
-        var_trans = T.rand(feature_dim, num_dims,
+        var_linear = T.rand(feature_dim, 1,
+                            dtype=T.double) * init_mean * 2 - init_mean
+        var_emb = T.rand(feature_dim, num_dim,
+                         dtype=T.double) * init_mean * 2 - init_mean
+
+        self._feature_dim = feature_dim
+        self._num_dim = num_dim
+        self._init_mean = init_mean
+        self.param_linear = nn.Parameter(var_linear)
+        self.param_emb = nn.Parameter(var_emb)
+
+        var_trans = T.rand(feature_dim, num_dim,
                            dtype=T.double) * init_mean * 2 - init_mean
         self.param_trans = nn.Parameter(var_trans)
 
@@ -176,7 +219,9 @@ class TorchTransFM(TorchFM):
         # Interaction terms
         # First define common terms that are used by future calculations
         # Common terms
-        var_sum_op = T.ones(feature_dim, 1, dtype=T.double)
+        var_sum_op = T.ones((feature_dim, 1),
+                            dtype=T.double,
+                            device=pos_feats.device)
         var_emb_product = T.sum(T.pow(param_emb, 2), dim=1, keepdim=True)
         var_trans_product = T.sum(T.pow(param_trans, 2), dim=1, keepdim=True)
         var_emb_trans_product = T.sum(param_emb * param_trans,
