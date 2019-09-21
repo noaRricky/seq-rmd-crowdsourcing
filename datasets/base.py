@@ -1,6 +1,7 @@
 from typing import List, Dict
 
 import numpy as np
+import scipy.sparse as sp
 import pandas as pd
 import torch as T
 from torch.utils.data import Dataset, DataLoader
@@ -52,6 +53,18 @@ class DataBunch(object):
         self.shuffle = shuffle
         self.num_workers = num_workers
         self.device = device
+
+    def _build_feat_tensor(self, feat_matrix: sp.coo_matrix):
+        feat_index_list = feat_matrix.nonzero()
+        feat_index_array: np.ndarray = np.vstack(feat_index_list)
+
+        feat_index = T.tensor(feat_index_array.tolist(), dtype=T.long)
+        feat_value = T.tensor(feat_matrix.data, dtype=T.double)
+        feat_tensor = T.sparse_coo_tensor(feat_index_list,
+                                          feat_value,
+                                          size=feat_matrix.shape)
+
+        return feat_tensor
 
     def _data_collate(self, batch: List[np.ndarray]):
         raise NotImplementedError
