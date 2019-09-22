@@ -29,7 +29,7 @@ class TorchKaggle(DataBunch):
         item_df['score'] = item_df['score'].where(item_df['score'] != np.inf,
                                                   0)
         item_df['rewardQuantity'] = item_df['rewardQuantity'].where(
-            ~item_df['rewardQuantity'] == np.inf, 0)
+            item_df['rewardQuantity'] != np.inf, 0)
         print(f"Raw dataframe shape {item_df.shape}")
         item_df = item_df.dropna()
         print(f"After drop nan shape: {item_df.shape}")
@@ -57,7 +57,7 @@ class TorchKaggle(DataBunch):
         pre_cols = ['previousId', 'previousReward', 'rank', 'score', 'tier']
         pre_cont_cols = ['rank', 'score', 'rewardQuantity', 'previousReward']
 
-        item_df = item_df.sort_values()
+        item_df = item_df.sort_values(by=['name', 'deadline'])
         item_df[new_cols] = item_df[['competitionId', 'rewardQuantity']]
         item_df[pre_cols] = item_df[pre_cols].shift(periods=1)
 
@@ -69,9 +69,10 @@ class TorchKaggle(DataBunch):
         item_df['tier'] = item_df['tier'].where(first_mask, 'none')
 
         # Build up encoder
-        item_encoder = OneHotEncoder(categories='auto', handle_error='ignore')
-        user_encoder = OneHotEncoder(categories='auto', handle_error='error')
-        cat_encoder = OneHotEncoder(categories='auto', handle_error='error')
+        item_encoder = OneHotEncoder(categories='auto',
+                                     handle_unknown='ignore')
+        user_encoder = OneHotEncoder(categories='auto', handle_unknown='error')
+        cat_encoder = OneHotEncoder(categories='auto', handle_unknown='error')
         reward_scaler = MinMaxScaler(feature_range=(0, 1))
         cont_scaler = MinMaxScaler(feature_range=(0, 1))
         cont_names = ['rank', 'score']
@@ -81,10 +82,10 @@ class TorchKaggle(DataBunch):
         user_encoder.fit(item_df[['name']])
         cat_encoder.fit(item_df[cat_names])
         cont_scaler.fit(item_df[cont_names])
-        reward_scaler.fit(item_df['rewardQuantity'])
+        reward_scaler.fit(item_df[['rewardQuantity']])
 
         # Split train, valid, test dataframe
-        item_df = item_df.sort_values(by=['name', 'time'])
+        item_df = item_df.sort_values(by=['name', 'deadline'])
         duplicate_mask = item_df.duplicated(subset=['name'], keep='last')
         remain_df = item_df[duplicate_mask]
         test_df = item_df[~duplicate_mask]
@@ -115,7 +116,7 @@ class TorchKaggle(DataBunch):
         self.shuffle = False
         self.num_workers = 0
         self.device = T.device('cpu')
-        self.feat_dim = user_dim + 2 * item_dim + cont_dim + cat_dim
+        self.feat_dim = user_dim + 2 * item_dim + cont_dim + cat_dim + 2  # 2 for the reward dimension
 
     def _data_collate(self, batch: List[pd.Series]):
         device = self.device
@@ -138,9 +139,9 @@ class TorchKaggle(DataBunch):
         cat_matrix = cat_encoder.transform(df[cat_names])
         cont_matrix = sp.csr_matrix(cont_scaler.transform(df[cont_names]))
         reward_matrix = sp.csr_matrix(
-            reward_scaler.transform[['rewardQuantity']])
+            reward_scaler.transform(df[['rewardQuantity']]))
         prev_reward_matrix = sp.csr_matrix(
-            reward_scaler.transform(df['previousReward']))
+            reward_scaler.transform(df[['previousReward']]))
         neg_reward_matrix = sp.csr_matrix(neg_df[['rewardQuantity']])
 
         pos_matrix = sp.hstack([
@@ -161,3 +162,13 @@ class TorchKaggle(DataBunch):
         neg_tensor = neg_tensor.to(device)
 
         return user_tensor, pos_tensor, neg_tensor
+
+
+if __name__ == "__main__":
+    item_path = Path("./inputs/kaggle/item.csv")
+
+    databunch = TorchKaggle(item_path)
+    train_ld = databunch.get_dataloader(ds_type='train')
+    train_it = iter(train_ld)
+
+    user_tensor, pos_tensor, neg_tensor = next(train_it)
