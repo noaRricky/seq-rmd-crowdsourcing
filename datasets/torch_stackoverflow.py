@@ -64,7 +64,7 @@ class TorchStackOverflow(DataBunch):
         user_encoder.fit(item_df[['userId']])
         ans_vote_scaler.fit(item_df[['answerVote']])
         cont_scaler.fit(ques_df[cont_names])
-        tags_binzer.fit(ques_df[['tags']])
+        tags_binzer.fit(ques_df['tags'])
 
         ## Split train, valie and test dataframe
         # Split test dataframe
@@ -117,6 +117,11 @@ class TorchStackOverflow(DataBunch):
                                         right=ques_df,
                                         on='questionId',
                                         how='inner')
+        prev_df: pd.DataFrame = pd.merge(left=df[['prevQuesId']],
+                                         right=ques_df,
+                                         left_on='prevQuesId',
+                                         right_on='questionId',
+                                         how='inner')
         neg_df = ques_df.sample(n=len(batch))
 
         # encode features
@@ -124,20 +129,23 @@ class TorchStackOverflow(DataBunch):
         prev_ques_mat = question_encoder.transform(df[['prevQuesId']])
         pos_ques_mat = question_encoder.transform(df[['questionId']])
         neg_ques_mat = question_encoder.transform(neg_df[['questionId']])
-        ans_vote_mat = question_encoder.transform(df[['answerVote']])
-        pos_tags_mat = tags_binzer.transform(pos_df[['tags']])
-        neg_tags_mat = tags_binzer.transform(neg_df[['tags']])
+        ans_vote_mat = ans_vote_scaler.transform(df[['answerVote']])
+        prev_tags_mat = tags_binzer.transform(prev_df['tags'])
+        pos_tags_mat = tags_binzer.transform(pos_df['tags'])
+        neg_tags_mat = tags_binzer.transform(neg_df['tags'])
+        prev_cont_mat = sp.csr_matrix(
+            cont_scaler.transform(prev_df[cont_names]))
         pos_cont_mat = sp.csr_matrix(cont_scaler.transform(pos_df[cont_names]))
-        neg_cont_mat = sp.csr_matrix(cont_scaler.transform(
-            neg_df[cont_scaler]))
+        neg_cont_mat = sp.csr_matrix(cont_scaler.transform(neg_df[cont_names]))
 
+        # stack different features
         pos_mat = sp.hstack([
-            user_mat, prev_ques_mat, pos_ques_mat, ans_vote_scaler,
-            pos_tags_mat, pos_cont_mat
+            user_mat, prev_ques_mat, pos_ques_mat, ans_vote_mat, prev_tags_mat,
+            prev_cont_mat, pos_tags_mat, pos_cont_mat
         ])
         neg_mat = sp.hstack([
-            user_mat, prev_ques_mat, neg_ques_mat, ans_vote_mat, neg_tags_mat,
-            neg_cont_mat
+            user_mat, prev_ques_mat, neg_ques_mat, ans_vote_mat, prev_tags_mat,
+            prev_cont_mat, neg_tags_mat, neg_cont_mat
         ])
 
         user_tensor = T.tensor(user_mat.indices, dtype=T.long, device=device)
@@ -145,3 +153,14 @@ class TorchStackOverflow(DataBunch):
         neg_tensor = self._build_feat_tensor(neg_mat, device=device)
 
         return user_tensor, pos_tensor, neg_tensor
+
+
+if __name__ == "__main__":
+    data_path = Path("./inputs/stackoverflow/item.csv")
+
+    databunch = TorchStackOverflow(data_path, min_user=4)
+    train_ld = databunch.get_dataloader(ds_type='train')
+    train_it = iter(train_ld)
+    user_tensor, pos_tensor, neg_tensor = next(train_it)
+    print(pos_tensor.shape)
+    print(databunch.feat_dim)
