@@ -191,15 +191,20 @@ class TorchTopcoder(DataBunch):
 
         return user_tensor, pos_tensor, neg_tensor
 
-    def _build_feat_tensor(self, feat_matrix: sp.coo_matrix):
+    def _build_feat_tensor(self,
+                           feat_matrix: sp.coo_matrix,
+                           device: Optional[T.device] = T.device('cpu')):
         feat_index_list = feat_matrix.nonzero()
         feat_index_array: np.ndarray = np.vstack(feat_index_list)
 
-        feat_index = T.tensor(feat_index_array.tolist(), dtype=T.long)
-        feat_value = T.tensor(feat_matrix.data, dtype=T.double)
+        feat_index = T.tensor(feat_index_array.tolist(),
+                              dtype=T.long,
+                              device=device)
+        feat_value = T.tensor(feat_matrix.data, dtype=T.double, device=device)
         feat_tensor = T.sparse_coo_tensor(feat_index,
                                           feat_value,
-                                          size=feat_matrix.shape)
+                                          size=feat_matrix.shape,
+                                          device=device)
 
         return feat_tensor
 
