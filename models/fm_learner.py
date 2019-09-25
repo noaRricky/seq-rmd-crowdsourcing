@@ -115,6 +115,18 @@ class FMLearner(object):
             with T.no_grad():
                 self.update_hit_counts(user_index, pos_preds, neg_preds)
 
+                # Compute current batch accuracy
+                batch_size = user_index.size(0)
+                hit_size = T.sum(pos_preds > neg_preds).to(T.double)
+                auc = hit_size / batch_size
+                writer.add_scalar("accuarcy",
+                                  auc.item(),
+                                  global_step=global_step)
+
+                print("Epoch {} step {}: training accuarcy: {}".format(
+                    epoch, global_step, auc))
+
+        self._global_step = global_step
         with T.no_grad():
             self.log_info(epoch, step + 1, loss, loop_type='train')
 
@@ -135,6 +147,19 @@ class FMLearner(object):
                 self.update_hit_counts(user_index, pos_preds, neg_preds)
 
             self.log_info(epoch, step + 1, loss, loop_type='valid')
+
+    def test_loop(self) -> None:
+        with T.no_grad():
+            dl = self.dl_dict['test']
+            self.hit_per_user.zero_()
+            self.user_counts.zero_()
+
+            for step, (user_index, pos_batch, neg_batch) in enumerate(dl):
+                pos_preds, neg_preds = self.model(pos_batch, neg_batch)
+                self.update_hit_counts(user_index, pos_preds, neg_preds)
+
+            auc = self.compute_auc().item()
+            print(f"Test dataset accuarcy {auc}")
 
     def log_info(self, epoch: int, step: int, loss: float,
                  loop_type: str) -> None:

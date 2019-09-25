@@ -95,6 +95,7 @@ class TorchStackOverflow(DataBunch):
         self._cont_names = cont_names
 
         # Set up public attributions
+        self.user_size = user_dim
         self.feat_dim = user_dim + 2 * question_dim + ans_vote_dim + 2 * cont_dim + 2 * tags_dim
         self.batch_size = 32
         self.shuffle = False

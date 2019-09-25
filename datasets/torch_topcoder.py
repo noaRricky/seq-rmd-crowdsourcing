@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from utils import build_logger
 from datasets.base import DFDataset, DataBunch
 
-logger = build_logger()
+# logger = build_logger()
 
 
 class TorchTopcoder(DataBunch):
@@ -44,21 +44,21 @@ class TorchTopcoder(DataBunch):
                                          infer_datetime_format=True)
 
         # Print information
-        logger.info(f"Read dataset in {regs_path}")
-        logger.info(f"Original regs shape: {regs_df.shape}")
+        print(f"Read dataset in {regs_path}")
+        print(f"Original regs shape: {regs_df.shape}")
 
         # get counting information
         regs_counts = regs_df['registant'].value_counts()
         chag_counts = regs_df['challengeId'].value_counts()
-        logger.info(f"Original registants size: {regs_counts.size}")
-        logger.info(f"Original challenges size: {chag_counts.size}")
+        print(f"Original registants size: {regs_counts.size}")
+        print(f"Original challenges size: {chag_counts.size}")
 
         # remove sparse item in counts
         regs_counts = regs_counts[regs_counts >= regs_min]
 
         # Remove sparse item
         regs_df = regs_df[regs_df['registant'].isin(regs_counts.index)]
-        logger.info(f"Filter dataframe shape: {regs_df.shape}")
+        print(f"Filter dataframe shape: {regs_df.shape}")
 
         # Add previous columns
         regs_df = regs_df.sort_values(by=['registant', 'date'])

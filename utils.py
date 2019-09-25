@@ -24,16 +24,13 @@ def build_logger() -> logging.Logger:
     return logger
 
 
-def get_log_dir(model_type: str) -> Path:
+def get_log_dir(ds_type: str, model_type: str) -> Path:
     current = datetime.now().strftime('%b%d_%H-%M-%S')
     dirname = '-'.join([model_type, current])
     base_path = Path('./runs')
-    log_path = base_path / dirname
+    log_path = base_path / ds_type / dirname
     return log_path
 
 
 if __name__ == "__main__":
-    for each_path in sys.path:
-        print(each_path)
-
-    print("hello world")
+    print(get_log_dir(ds_type='kaggle', model_type='hello'))

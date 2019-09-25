@@ -99,6 +99,7 @@ class TorchKaggle(DataBunch):
         cont_dim = len(cont_names)
         cat_dim = sum([c.size for c in cat_encoder.categories_])
 
+        # Configure private attribution
         self._item_encoder = item_encoder
         self._user_encoder = user_encoder
         self._cat_encoder = cat_encoder
@@ -112,6 +113,9 @@ class TorchKaggle(DataBunch):
             'test': test_df
         }
         self._comp_df = comp_df
+
+        # Configure public attribution
+        self.user_size = user_dim
         self.batch_size = 32
         self.shuffle = False
         self.num_workers = 0
@@ -130,7 +134,7 @@ class TorchKaggle(DataBunch):
         comp_df = self._comp_df
 
         df = pd.DataFrame(batch)
-        neg_df = comp_df.sample(n=df.shape[0])
+        neg_df = comp_df.sample(n=df.shape[0], replace=True)
 
         user_matrix: sp.csr_matrix = user_encoder.transform(df[['name']])
         item_matrix = item_encoder.transform(df[['competitionId']])
