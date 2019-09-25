@@ -1,5 +1,7 @@
 import logging
 import sys
+from datetime import datetime
+from pathlib import Path
 
 
 def build_logger() -> logging.Logger:
@@ -20,6 +22,14 @@ def build_logger() -> logging.Logger:
     logger.addHandler(cmd_handler)
 
     return logger
+
+
+def get_log_dir(model_type: str) -> Path:
+    current = datetime.now().strftime('%b%d_%H-%M-%S')
+    dirname = '-'.join([model_type, current])
+    base_path = Path('./runs')
+    log_path = base_path / dirname
+    return log_path
 
 
 if __name__ == "__main__":

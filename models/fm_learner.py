@@ -1,4 +1,5 @@
 from typing import List, Dict, Callable, Optional
+from pathlib import Path
 
 import numpy as np
 import torch as T
@@ -45,7 +46,7 @@ class FMLearner(object):
             self,
             epoch: int,
             loss_callback: Callable[[nn.Module, T.Tensor, T.Tensor], T.Tensor],
-            log_dir: Optional[str] = None,
+            log_dir: Optional[Path] = None,
     ):
         # self._schedular = optim.lr_scheduler.StepLR(op,
         #                                             lr_decay_freq,

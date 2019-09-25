@@ -146,20 +146,18 @@ class TorchKaggle(DataBunch):
 
         pos_matrix = sp.hstack([
             user_matrix, prev_matrix, item_matrix, cat_matrix, cont_matrix,
-            reward_matrix, prev_reward_matrix
+            prev_reward_matrix, reward_matrix
         ])
         neg_matrix = sp.hstack([
             user_matrix, prev_matrix, neg_item_matrix, cat_matrix, cont_matrix,
-            neg_reward_matrix, prev_reward_matrix
+            prev_reward_matrix, neg_reward_matrix
         ])
 
-        user_tensor = T.tensor(user_matrix.indices, dtype=T.long)
-        pos_tensor = self._build_feat_tensor(pos_matrix)
-        neg_tensor = self._build_feat_tensor(neg_matrix)
-
-        user_tensor = user_tensor.to(device)
-        pos_tensor = pos_tensor.to(device)
-        neg_tensor = neg_tensor.to(device)
+        user_tensor = T.tensor(user_matrix.indices,
+                               dtype=T.long,
+                               device=device)
+        pos_tensor = self._build_feat_tensor(pos_matrix, device=device)
+        neg_tensor = self._build_feat_tensor(neg_matrix, device=device)
 
         return user_tensor, pos_tensor, neg_tensor
 
