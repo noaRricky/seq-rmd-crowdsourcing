@@ -153,7 +153,7 @@ class TorchStackOverflow(DataBunch):
         pos_tensor = self._build_feat_tensor(pos_mat, device=device)
         neg_tensor = self._build_feat_tensor(neg_mat, device=device)
 
-        return user_tensor, pos_tensor, neg_tensor
+        return user_tensor, pos_tensor, neg_tensor, None
 
 
 if __name__ == "__main__":

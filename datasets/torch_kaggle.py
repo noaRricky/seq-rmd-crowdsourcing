@@ -116,10 +116,7 @@ class TorchKaggle(DataBunch):
 
         # Configure public attribution
         self.user_size = user_dim
-        self.batch_size = 32
-        self.shuffle = False
-        self.num_workers = 0
-        self.device = T.device('cpu')
+        self.config_db()
         self.feat_dim = user_dim + 2 * item_dim + cont_dim + cat_dim + 2  # 2 for the reward dimension
 
     def _data_collate(self, batch: List[pd.Series]):
@@ -163,7 +160,7 @@ class TorchKaggle(DataBunch):
         pos_tensor = self._build_feat_tensor(pos_matrix, device=device)
         neg_tensor = self._build_feat_tensor(neg_matrix, device=device)
 
-        return user_tensor, pos_tensor, neg_tensor
+        return user_tensor, pos_tensor, neg_tensor, None
 
 
 if __name__ == "__main__":
@@ -173,4 +170,5 @@ if __name__ == "__main__":
     train_ld = databunch.get_dataloader(ds_type='train')
     train_it = iter(train_ld)
 
-    user_tensor, pos_tensor, neg_tensor = next(train_it)
+    user_tensor, pos_tensor, neg_tensor, per_tensor = next(train_it)
+    print(per_tensor)

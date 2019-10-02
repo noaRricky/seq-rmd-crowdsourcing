@@ -45,7 +45,8 @@ class FMLearner(object):
     def fit(
             self,
             epoch: int,
-            loss_callback: Callable[[nn.Module, T.Tensor, T.Tensor], T.Tensor],
+            loss_callback: Callable[[nn.Module, T.Tensor, T.Tensor, T.
+                                     Tensor], T.Tensor],
             log_dir: Optional[Path] = None,
     ):
         # self._schedular = optim.lr_scheduler.StepLR(op,
@@ -97,11 +98,11 @@ class FMLearner(object):
         self.user_counts.zero_()
         loss = 0.0
 
-        for step, (user_index, pos_batch, neg_batch) in enumerate(dl):
+        for step, (user_index, pos_batch, neg_batch, weight) in enumerate(dl):
             op.zero_grad()
 
             pos_preds, neg_preds = self.model(pos_batch, neg_batch)
-            bprloss = loss_callback(self.model, pos_preds, neg_preds)
+            bprloss = loss_callback(self.model, pos_preds, neg_preds, weight)
             bprloss.backward()
             op.step()
 
@@ -131,6 +132,7 @@ class FMLearner(object):
             self.log_info(epoch, step + 1, loss, loop_type='train')
 
     def valid_loop(self, epoch: int) -> None:
+
         with T.no_grad():
             dl = self.dl_dict['valid']
             loss_callback = self._loss_callback
@@ -139,18 +141,22 @@ class FMLearner(object):
             self.user_counts.zero_()
             loss = 0.0
 
-            for step, (user_index, pos_batch, neg_batch) in enumerate(dl):
+            for step, (user_index, pos_batch, neg_batch,
+                       weight) in enumerate(dl):
 
                 pos_preds, neg_preds = self.model(pos_batch, neg_batch)
-                bprloss = loss_callback(self.model, pos_preds, neg_preds)
+                bprloss = loss_callback(self.model, pos_preds, neg_preds,
+                                        weight)
                 loss += bprloss.item()
                 self.update_hit_counts(user_index, pos_preds, neg_preds)
 
             self.log_info(epoch, step + 1, loss, loop_type='valid')
 
-    def test_loop(self) -> None:
+    def predict(self, ds_type: str) -> None:
+        assert ds_type in ['train', 'valid', 'test'], "Illegal dataset type"
+
         with T.no_grad():
-            dl = self.dl_dict['test']
+            dl = self.dl_dict[ds_type]
             self.hit_per_user.zero_()
             self.user_counts.zero_()
 
@@ -181,8 +187,12 @@ class FMLearner(object):
             self.best_epoch = epoch
 
 
-def simple_loss(linear_reg: float, emb_reg: float, model: TorchFM,
-                pos_preds: T.Tensor, neg_preds: T.Tensor) -> T.Tensor:
+def simple_loss(linear_reg: float,
+                emb_reg: float,
+                model: TorchFM,
+                pos_preds: T.Tensor,
+                neg_preds: T.Tensor,
+                weight: Optional[T.Tensor] = None) -> T.Tensor:
     param_linear = model.param_linear
     param_emb = model.param_emb
 
@@ -194,9 +204,13 @@ def simple_loss(linear_reg: float, emb_reg: float, model: TorchFM,
     return bprloss
 
 
-def trans_loss(linear_reg: float, emb_reg: float, trans_reg: float,
-               model: TorchTransFM, pos_preds: T.Tensor,
-               neg_preds: T.Tensor) -> T.Tensor:
+def trans_loss(linear_reg: float,
+               emb_reg: float,
+               trans_reg: float,
+               model: TorchTransFM,
+               pos_preds: T.Tensor,
+               neg_preds: T.Tensor,
+               weight: Optional[T.Tensor] = None) -> T.Tensor:
     param_linear = model.param_linear
     param_emb = model.param_linear
     param_trans = model.param_trans
@@ -206,5 +220,51 @@ def trans_loss(linear_reg: float, emb_reg: float, trans_reg: float,
     l2_term += trans_reg * T.sum(T.pow(param_trans, 2))
 
     bprloss = T.sum(T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))) - l2_term
+    bprloss = -1 * bprloss
+    return bprloss
+
+
+def simple_weight_loss(
+        linear_reg: float,
+        emb_reg: float,
+        model: TorchFM,
+        pos_preds: T.Tensor,
+        neg_preds: T.Tensor,
+        weight: T.Tensor,
+):
+    param_linear = model.param_linear
+    param_emb = model.param_emb
+
+    l2_term = linear_reg * T.sum(T.pow(param_linear, 2))
+    l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
+
+    l1_term = T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))
+    l1_term = (1 + T.log(1 + weight)) * l1_term
+
+    bprloss = T.sum(l1_term) - l2_term
+    bprloss = -1 * bprloss
+    return bprloss
+
+
+def trans_weight_loss(
+        linear_reg: float,
+        emb_reg: float,
+        trans_reg: float,
+        model: TorchFM,
+        pos_preds: T.Tensor,
+        neg_preds: T.Tensor,
+        weight: T.Tensor,
+):
+    param_linear = model.param_linear
+    param_emb = model.param_linear
+    param_trans = model.param_trans
+
+    l2_term = linear_reg * T.sum(T.pow(param_linear, 2))
+    l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
+    l2_term += trans_reg * T.sum(T.pow(param_trans, 2))
+    l1_term = T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))
+    l1_term = (1 + T.log(1 + weight)) * l1_term
+
+    bprloss = T.sum(l1_term) - l2_term
     bprloss = -1 * bprloss
     return bprloss
