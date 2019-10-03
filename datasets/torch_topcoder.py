@@ -299,19 +299,59 @@ class SeqTopcoder(DataBunch):
         self.feat_dim = regs_size + 2 * chag_size + 2 * seq_size
         self.user_size = regs_size
 
-    def config_db(self,
-                  batch_size: int = 32,
-                  shuffle: bool = False,
-                  num_workers: int = 0,
-                  device: T.device = T.device('cpu'),
-                  neg_sample: int = 5) -> None:
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.num_workers = num_workers
-        self.device = device
-        self.neg_sample = neg_sample
+    def _base_collate(self, batch: List[pd.Series]):
+        device = self.device
+        regs_encoder = self._regs_encoder
+        chag_encoder = self._chag_encoder
+        period_encoder = self._period_encoder
+        tech_binarizer = self._tech_binarizer
+        plat_binarizer = self._plat_binarizer
+        chag_df = self._chag_df
 
-    def _data_collate(self, batch: List[pd.Series]):
+        df = pd.DataFrame(batch)
+        prev_feat_df = pd.merge(left=df[['previousId']],
+                                right=chag_df,
+                                how='inner',
+                                left_on=['previousId'],
+                                right_on=['challengeId'])
+        pos_feat_df = pd.merge(left=df[['challengeId']],
+                               right=chag_df,
+                               how='inner',
+                               on=['challengeId'])
+        neg_feat_df = chag_df.sample(df.shape[0])
+
+        # encoder base feature
+        regs_vector = regs_encoder.transform(df[['registant']])
+        chag_vector = chag_encoder.transform(df[['previousId']])
+        tech_vector = tech_binarizer.transform(prev_feat_df['technologies'])
+        plat_vector = plat_binarizer.transform(prev_feat_df['platforms'])
+        base_vector = sp.hstack(
+            [regs_vector, chag_vector, tech_vector, plat_vector])
+
+        # encode positive feature
+        chag_vector = chag_encoder.transform(pos_feat_df[['challengeId']])
+        tech_vector = tech_binarizer.transform(pos_feat_df['technologies'])
+        plat_vector = plat_binarizer.transform(pos_feat_df['platforms'])
+        pos_matrix = sp.hstack(
+            [base_vector, chag_vector, tech_vector, plat_vector])
+
+        # encode negtive feature
+        chag_vector = chag_encoder.transform(neg_feat_df[['challengeId']])
+        tech_vector = tech_binarizer.transform(neg_feat_df['technologies'])
+        plat_vector = plat_binarizer.transform(neg_feat_df['platforms'])
+        neg_matrix = sp.hstack(
+            [base_vector, chag_vector, tech_vector, plat_vector])
+
+        # sparse matrix to tensor
+        user_tensor = T.tensor(regs_vector.indices,
+                               dtype=T.long,
+                               device=device)
+        pos_tensor = self._build_feat_tensor(pos_matrix, device)
+        neg_tensor = self._build_feat_tensor(neg_matrix, device)
+
+        return user_tensor, pos_tensor, neg_tensor, None
+
+    def _seq_collate(self, batch: List[pd.Series]):
         device = self.device
         regs_encoder = self._regs_encoder
         chag_encoder = self._chag_encoder

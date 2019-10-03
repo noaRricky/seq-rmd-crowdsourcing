@@ -263,19 +263,60 @@ class SeqStackoverflow(DataBunch):
         self.config_db()
         self.feat_dim = user_dim + 2 * question_dim + ans_vote_dim + 2 * cont_dim + 2 * tags_dim
 
-    def config_db(self,
-                  batch_size: int = 32,
-                  shuffle: bool = False,
-                  num_workers: int = 0,
-                  device: T.device = T.device('cpu'),
-                  neg_sample: int = 5) -> None:
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.num_workers = num_workers
-        self.device = device
-        self.neg_sample = neg_sample
+    def _base_collate(self, batch):
+        device = self.device
+        cont_names = self._cont_names
+        question_encoder = self._question_encoder
+        user_encoder = self._user_encoder
+        ans_vote_scaler = self._ans_vote_scaler
+        cont_scaler = self._cont_scaler
+        tags_binzer = self._tags_binzer
+        ques_df = self._ques_df
 
-    def _data_collate(self, batch: List[pd.Series]):
+        # Generate feature dataframe
+        df = pd.DataFrame(batch)
+        pos_df: pd.DataFrame = pd.merge(left=df[['questionId']],
+                                        right=ques_df,
+                                        on='questionId',
+                                        how='inner')
+        prev_df: pd.DataFrame = pd.merge(left=df[['prevQuesId']],
+                                         right=ques_df,
+                                         left_on='prevQuesId',
+                                         right_on='questionId',
+                                         how='inner')
+        neg_df = ques_df.sample(n=len(batch))
+
+        # encode features
+        user_mat: sp.csr_matrix = user_encoder.transform(df[['userId']])
+        prev_ques_mat = question_encoder.transform(df[['prevQuesId']])
+        pos_ques_mat = question_encoder.transform(df[['questionId']])
+        neg_ques_mat = question_encoder.transform(neg_df[['questionId']])
+        ans_vote_mat = ans_vote_scaler.transform(df[['answerVote']])
+        prev_tags_mat = tags_binzer.transform(prev_df['tags'])
+        pos_tags_mat = tags_binzer.transform(pos_df['tags'])
+        neg_tags_mat = tags_binzer.transform(neg_df['tags'])
+        prev_cont_mat = sp.csr_matrix(
+            cont_scaler.transform(prev_df[cont_names]))
+        pos_cont_mat = sp.csr_matrix(cont_scaler.transform(pos_df[cont_names]))
+        neg_cont_mat = sp.csr_matrix(cont_scaler.transform(neg_df[cont_names]))
+
+        # stack different features
+        pos_mat = sp.hstack([
+            user_mat, prev_ques_mat, pos_ques_mat, ans_vote_mat, prev_tags_mat,
+            prev_cont_mat, pos_tags_mat, pos_cont_mat
+        ])
+        neg_mat = sp.hstack([
+            user_mat, prev_ques_mat, neg_ques_mat, ans_vote_mat, prev_tags_mat,
+            prev_cont_mat, neg_tags_mat, neg_cont_mat
+        ])
+
+        user_tensor = T.tensor(user_mat.indices, dtype=T.long, device=device)
+        pos_tensor = self._build_feat_tensor(pos_mat, device=device)
+        neg_tensor = self._build_feat_tensor(neg_mat, device=device)
+
+        return user_tensor, pos_tensor, neg_tensor, None
+
+    def _seq_collate(self, batch: List[pd.Series]):
         device = self.device
         cont_names = self._cont_names
         question_encoder = self._question_encoder

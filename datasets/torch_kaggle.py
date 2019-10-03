@@ -279,19 +279,50 @@ class SeqKaggle(DataBunch):
         self.config_db()
         self.feat_dim = user_dim + 2 * item_dim + cont_dim + cat_dim + 2
 
-    def config_db(self,
-                  batch_size: int = 32,
-                  shuffle: bool = False,
-                  num_workers: int = 0,
-                  device: T.device = T.device('cpu'),
-                  neg_sample: int = 5) -> None:
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.num_workers = num_workers
-        self.device = device
-        self.neg_sample = neg_sample
+    def _base_collate(self, batch: List[pd.Series]):
+        device = self.device
+        item_encoder = self._item_encoder
+        user_encoder = self._user_encoder
+        cat_encoder = self._cat_encoder
+        cont_scaler = self._cont_scaler
+        reward_scaler = self._reward_scaler
+        cont_names = self._cont_names
+        cat_names = self._cat_names
+        comp_df = self._comp_df
 
-    def _data_collate(self, batch: List[pd.Series]):
+        df = pd.DataFrame(batch)
+        neg_df = comp_df.sample(n=df.shape[0], replace=True)
+
+        user_matrix: sp.csr_matrix = user_encoder.transform(df[['name']])
+        item_matrix = item_encoder.transform(df[['competitionId']])
+        prev_matrix = item_encoder.transform(df[['previousId']])
+        neg_item_matrix = item_encoder.transform(neg_df[['competitionId']])
+        cat_matrix = cat_encoder.transform(df[cat_names])
+        cont_matrix = sp.csr_matrix(cont_scaler.transform(df[cont_names]))
+        reward_matrix = sp.csr_matrix(
+            reward_scaler.transform(df[['rewardQuantity']]))
+        prev_reward_matrix = sp.csr_matrix(
+            reward_scaler.transform(df[['previousReward']]))
+        neg_reward_matrix = sp.csr_matrix(neg_df[['rewardQuantity']])
+
+        pos_matrix = sp.hstack([
+            user_matrix, prev_matrix, item_matrix, cat_matrix, cont_matrix,
+            prev_reward_matrix, reward_matrix
+        ])
+        neg_matrix = sp.hstack([
+            user_matrix, prev_matrix, neg_item_matrix, cat_matrix, cont_matrix,
+            prev_reward_matrix, neg_reward_matrix
+        ])
+
+        user_tensor = T.tensor(user_matrix.indices,
+                               dtype=T.long,
+                               device=device)
+        pos_tensor = self._build_feat_tensor(pos_matrix, device=device)
+        neg_tensor = self._build_feat_tensor(neg_matrix, device=device)
+
+        return user_tensor, pos_tensor, neg_tensor, None
+
+    def _seq_collate(self, batch: List[pd.Series]):
         device = self.device
         item_encoder = self._item_encoder
         user_encoder = self._user_encoder

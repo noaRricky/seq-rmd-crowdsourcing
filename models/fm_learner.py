@@ -33,8 +33,9 @@ class FMLearner(object):
         user_size = databunch.user_size
         device = databunch.device
 
-        self.dl_dict = {ds: databunch.get_dataloader(ds) for ds in ds_types}
+        self.dl_dict: Dict[str, DataLoader] = {}
         self.model = model.to(device)
+        self._databunch = databunch
         self._op = op
         self._schedular = schedular
         self.hit_per_user: T.Tensor = T.zeros(user_size)
@@ -42,11 +43,21 @@ class FMLearner(object):
         self.best_val_auc = 0.
         self.best_epoch = 0.
 
+    def compile(
+            self, train_col: str, valid_col: str, test_col: str,
+            loss_callback: Callable[[nn.Module, T.Tensor, T.Tensor, T.
+                                     Tensor], T.Tensor]) -> None:
+        self.dl_dict['train'] = self._databunch.get_dataloader(
+            ds_type='train', collate_fn=train_col)
+        self.dl_dict['valid'] = self._databunch.get_dataloader(
+            ds_type='valid', collate_fn=valid_col)
+        self.dl_dict['test'] = self._databunch.get_dataloader(
+            ds_type='test', collate_fn=test_col)
+        self._loss_callback = loss_callback
+
     def fit(
             self,
             epoch: int,
-            loss_callback: Callable[[nn.Module, T.Tensor, T.Tensor, T.
-                                     Tensor], T.Tensor],
             log_dir: Optional[Path] = None,
     ):
         # self._schedular = optim.lr_scheduler.StepLR(op,
@@ -54,7 +65,7 @@ class FMLearner(object):
         #                                             gamma=lr_decay_factor)
         self._writer = writer = SummaryWriter(logdir=log_dir)
         self._global_step = 0
-        self._loss_callback = loss_callback
+
         schedular = self._schedular
 
         for cur_epoch in tqdm(range(epoch)):
