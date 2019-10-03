@@ -239,7 +239,7 @@ def simple_weight_loss(
     l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
 
     l1_term = T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))
-    l1_term = (1 + T.log(1 + weight)) * l1_term
+    l1_term = T.log(1 + weight) * l1_term
 
     bprloss = T.sum(l1_term) - l2_term
     bprloss = -1 * bprloss
@@ -263,7 +263,7 @@ def trans_weight_loss(
     l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
     l2_term += trans_reg * T.sum(T.pow(param_trans, 2))
     l1_term = T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))
-    l1_term = (1 + T.log(1 + weight)) * l1_term
+    l1_term = T.log(1 + weight) * l1_term
 
     bprloss = T.sum(l1_term) - l2_term
     bprloss = -1 * bprloss
