@@ -156,6 +156,11 @@ class TorchStackOverflow(DataBunch):
         return user_tensor, pos_tensor, neg_tensor, None
 
 
+class SeqStackoverflow(DataBunch):
+    def __init__(self):
+        pass
+
+
 if __name__ == "__main__":
     data_path = Path("./inputs/stackoverflow/item.csv")
 
