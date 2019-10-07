@@ -55,14 +55,12 @@ class DataBunch(object):
                   shuffle: bool = False,
                   num_workers: int = 0,
                   device: T.device = T.device('cpu'),
-                  neg_sample: int = 5,
-                  collate_fn: str = 'base') -> None:
+                  neg_sample: int = 5) -> None:
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.num_workers = num_workers
         self.device = device
         self.neg_sample = neg_sample
-        self.collate_fn = collate_fn
 
     def _build_feat_tensor(self,
                            feat_matrix: sp.coo_matrix,
