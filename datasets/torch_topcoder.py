@@ -24,8 +24,6 @@ class SeqTopcoder(DataBunch):
     ) -> None:
         # Read dataframe
         regs_df = pd.read_csv(regs_path)
-        regs_df['date'] = pd.to_datetime(regs_df['date'],
-                                         infer_datetime_format=True)
 
         # Print information
         print(f"Read dataset in {regs_path}")
@@ -47,7 +45,7 @@ class SeqTopcoder(DataBunch):
         # Add previous and period columns
         regs_df = regs_df.sort_values(by=['registant', 'date'])
         regs_df['previousId'] = regs_df['challengeId']
-        regs_df['period'] = regs_df['date'].dt.to_period('M')
+        regs_df['period'] = regs_df['date'].str[:7]
 
         # Shift previous column
         regs_df['previousId'] = regs_df['previousId'].shift(
@@ -72,9 +70,7 @@ class SeqTopcoder(DataBunch):
                            on=['challengeId'])
         # Add default row
         print(chag_df.columns)
-        chag_df.loc[-1] = (-1, pd.Period(value='2005-01'),
-                           pd.Timestamp('2005-01-01 00:00:00'), 0, [], [])
-        chag_df['date'] = pd.to_datetime(chag_df['date'])
+        chag_df.loc[-1] = (-1, '2005-01', '2005-01-01', 0, [], [])
         chag_df = chag_df.sort_values(by=['date'])
 
         # Add encoder
@@ -136,12 +132,12 @@ class SeqTopcoder(DataBunch):
         df = pd.DataFrame(batch)
         prev_feat_df = pd.merge(left=df[['previousId']],
                                 right=chag_df,
-                                how='inner',
+                                how='left',
                                 left_on=['previousId'],
                                 right_on=['challengeId'])
         pos_feat_df = pd.merge(left=df[['challengeId']],
                                right=chag_df,
-                               how='inner',
+                               how='left',
                                on=['challengeId'])
         neg_feat_df = chag_df.sample(df.shape[0])
 
@@ -187,22 +183,24 @@ class SeqTopcoder(DataBunch):
         neg_sample = self.neg_sample
 
         df = pd.DataFrame(batch)
+        df = df.sort_values(by=['period'])
         prev_feat_df = pd.merge(left=df[['previousId']],
                                 right=chag_df,
-                                how='inner',
+                                how='left',
                                 left_on=['previousId'],
                                 right_on=['challengeId'])
         pos_feat_df = pd.merge(left=df[['challengeId']],
                                right=chag_df,
-                               how='inner',
+                               how='left',
                                on=['challengeId'])
 
         # Generate negtive feat dataframe
-        per_series = df['period']
+        per_counts = df['period'].value_counts().sort_index()
         neg_list = [
-            chag_df[chag_df['period'] == per].sample(n=neg_sample,
+            chag_df[chag_df['period'] == per].sample(n=per_counts[per] *
+                                                     neg_sample,
                                                      replace=True)
-            for per in per_series
+            for per in per_counts.index
         ]
         neg_feat_df = pd.concat(neg_list)
 
@@ -257,7 +255,7 @@ if __name__ == '__main__':
     REG_PATH = Path("./inputs/topcoder/regs.csv")
     CHA_PATH = Path("./inputs/topcoder/challenge.csv")
     databunch = SeqTopcoder(regs_path=REG_PATH, chag_path=CHA_PATH)
-    dl = databunch.get_dataloader(ds_type='train')
+    dl = databunch.get_dataloader(ds_type='train', collate_fn='seq')
     data_iter = iter(dl)
     user_tensor, pos_tensor, neg_tensor, per_tensor = next(data_iter)
     print(f"User size: {user_tensor.shape}")

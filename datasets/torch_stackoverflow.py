@@ -12,7 +12,6 @@ from torch import Tensor
 from datasets.base import DFDataset, DataBunch
 
 
-
 class SeqStackoverflow(DataBunch):
     def __init__(self, data_path: Path, min_user: Optional[int] = 4):
         item_df: pd.DataFrame = pd.read_csv(data_path)
@@ -135,12 +134,12 @@ class SeqStackoverflow(DataBunch):
         pos_df: pd.DataFrame = pd.merge(left=df[['questionId']],
                                         right=ques_df,
                                         on='questionId',
-                                        how='inner')
+                                        how='left')
         prev_df: pd.DataFrame = pd.merge(left=df[['prevQuesId']],
                                          right=ques_df,
                                          left_on='prevQuesId',
                                          right_on='questionId',
-                                         how='inner')
+                                         how='left')
         neg_df = ques_df.sample(n=len(batch))
 
         # encode features
@@ -190,12 +189,12 @@ class SeqStackoverflow(DataBunch):
         pos_df: pd.DataFrame = pd.merge(left=df[['questionId']],
                                         right=ques_df,
                                         on='questionId',
-                                        how='inner')
+                                        how='left')
         prev_df: pd.DataFrame = pd.merge(left=df[['prevQuesId']],
                                          right=ques_df,
                                          left_on='prevQuesId',
                                          right_on='questionId',
-                                         how='inner')
+                                         how='left')
         # Generate negtive sample
         date_series: pd.Series = df['date']
         neg_list = [
