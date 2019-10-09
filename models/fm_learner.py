@@ -13,7 +13,7 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from utils import build_logger
-from datasets.torch_movielen import TorchMovielen10k
+from datasets import DataBunch
 from .torch_fm import TorchFM, TorchTransFM
 
 logger = build_logger()
@@ -25,7 +25,7 @@ class FMLearner(object):
             model: TorchFM,
             op: Optimizer,
             schedular: _LRScheduler,
-            databunch: TorchMovielen10k,
+            databunch: DataBunch,
     ) -> None:
 
         ds_types = ['train', 'valid', 'test']
@@ -45,8 +45,8 @@ class FMLearner(object):
 
     def compile(
             self, train_col: str, valid_col: str, test_col: str,
-            loss_callback: Callable[[nn.Module, T.Tensor, T.Tensor, T.
-                                     Tensor], T.Tensor]) -> None:
+            loss_callback: Callable[[TorchFM, T.Tensor, T.Tensor, T.Tensor], T.
+                                    Tensor]) -> None:
         self.dl_dict['train'] = self._databunch.get_dataloader(
             ds_type='train', collate_fn=train_col)
         self.dl_dict['valid'] = self._databunch.get_dataloader(
@@ -203,7 +203,7 @@ def simple_loss(linear_reg: float,
                 model: TorchFM,
                 pos_preds: T.Tensor,
                 neg_preds: T.Tensor,
-                weight: Optional[T.Tensor] = None) -> T.Tensor:
+                weight: T.Tensor = None) -> T.Tensor:
     param_linear = model.param_linear
     param_emb = model.param_emb
 
@@ -250,7 +250,8 @@ def simple_weight_loss(
     l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
 
     l1_term = T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))
-    l1_term = T.log(1 + weight) * l1_term
+    log_weight = 1 + T.log(1 + weight)
+    l1_term = log_weight * l1_term
 
     bprloss = T.sum(l1_term) - l2_term
     bprloss = -1 * bprloss
@@ -274,7 +275,10 @@ def trans_weight_loss(
     l2_term += emb_reg * T.sum(T.pow(param_emb, 2))
     l2_term += trans_reg * T.sum(T.pow(param_trans, 2))
     l1_term = T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))
-    l1_term = T.log(1 + weight) * l1_term
+
+    l1_term = T.log(1e-10 + T.sigmoid(pos_preds - neg_preds))
+    log_weight = 1 + T.log(1 + weight)
+    l1_term = log_weight * l1_term
 
     bprloss = T.sum(l1_term) - l2_term
     bprloss = -1 * bprloss

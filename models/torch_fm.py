@@ -7,7 +7,7 @@ import torch.optim as optim
 
 
 class TorchFM(nn.Module):
-    def __init__(self, feature_dim: int, num_dim: int, init_mean: int):
+    def __init__(self, feature_dim: int, num_dim: int, init_mean: float):
         super(TorchFM, self).__init__()
 
         var_linear = T.rand(feature_dim, 1,

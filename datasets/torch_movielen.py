@@ -183,18 +183,6 @@ class TorchMovielen10k(DataBunch):
 
         return user_tensor, pos_tensor, neg_tensor
 
-    def _build_feat_tensor(self, feat_matrix: sp.coo_matrix):
-        feat_index_list = feat_matrix.nonzero()
-        feat_index_array: np.ndarray = np.vstack(feat_index_list)
-
-        feat_index = T.tensor(feat_index_array.tolist(), dtype=T.long)
-        feat_value = T.tensor(feat_matrix.data, dtype=T.double)
-        feat_tensor = T.sparse_coo_tensor(feat_index_list,
-                                          feat_value,
-                                          size=feat_matrix.shape)
-
-        return feat_tensor
-
 
 if __name__ == "__main__":
     data_path = Path("./inputs/ml-100k/u.data")

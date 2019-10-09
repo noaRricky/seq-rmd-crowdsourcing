@@ -25,6 +25,7 @@ class DataBunch(object):
         self.num_workers = 0
         self.device = T.device('cpu')
         self._df_dict: Dict[str, pd.DataFrame] = {}
+        self.user_size = 0
 
     def get_dataloader(self, ds_type: str,
                        collate_fn: str = 'base') -> DataLoader:
