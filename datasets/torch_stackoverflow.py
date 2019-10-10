@@ -185,7 +185,8 @@ class SeqStackoverflow(DataBunch):
         neg_sample = self.neg_sample
 
         # Generate feature dataframe
-        df = pd.DataFrame(batch)
+        df: pd.DataFrame = pd.DataFrame(batch)
+        df = df.sort_values(by=['date'])
         pos_df: pd.DataFrame = pd.merge(left=df[['questionId']],
                                         right=ques_df,
                                         on='questionId',
@@ -196,10 +197,12 @@ class SeqStackoverflow(DataBunch):
                                          right_on='questionId',
                                          how='left')
         # Generate negtive sample
-        date_series: pd.Series = df['date']
+        date_counts = df['date'].value_counts().sort_index()
+        date_counts = date_counts * neg_sample
         neg_list = [
-            ques_df[ques_df['date'] == date].sample(n=neg_sample, replace=True)
-            for date in date_series
+            ques_df[ques_df['date'] == date].sample(n=date_counts[date],
+                                                    replace=True)
+            for date in date_counts.index
         ]
         neg_df = pd.concat(neg_list)
 
@@ -253,7 +256,7 @@ if __name__ == "__main__":
     data_path = Path("./inputs/stackoverflow/item.csv")
 
     databunch = SeqStackoverflow(data_path, min_user=4)
-    train_ld = databunch.get_dataloader(ds_type='train')
+    train_ld = databunch.get_dataloader(ds_type='train', collate_fn='seq')
     train_it = iter(train_ld)
     user_tensor, pos_tensor, neg_tensor, per_tensor = next(train_it)
     print(pos_tensor.shape)

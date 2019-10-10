@@ -186,11 +186,12 @@ class SeqKaggle(DataBunch):
 
         df = pd.DataFrame(batch)
         # Geneate negative sample
-        per_series = df['period']
+        per_counts = df['period'].value_counts().sort_index()
+        per_counts = per_counts * neg_sample
         neg_list = [
-            comp_df[comp_df['period'] == per].sample(n=neg_sample,
+            comp_df[comp_df['period'] == per].sample(n=per_counts[per],
                                                      replace=True)
-            for per in per_series
+            for per in per_counts.index
         ]
         neg_df = pd.concat(neg_list)
 
@@ -247,7 +248,7 @@ if __name__ == "__main__":
     item_path = Path("./inputs/kaggle/item.csv")
 
     databunch = SeqKaggle(item_path)
-    train_ld = databunch.get_dataloader(ds_type='train')
+    train_ld = databunch.get_dataloader(ds_type='train', collate_fn='seq')
     train_it = iter(train_ld)
 
     user_tensor, pos_tensor, neg_tensor, per_tensor = next(train_it)

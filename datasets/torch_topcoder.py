@@ -196,9 +196,9 @@ class SeqTopcoder(DataBunch):
 
         # Generate negtive feat dataframe
         per_counts = df['period'].value_counts().sort_index()
+        per_counts = per_counts * neg_sample
         neg_list = [
-            chag_df[chag_df['period'] == per].sample(n=per_counts[per] *
-                                                     neg_sample,
+            chag_df[chag_df['period'] == per].sample(n=per_counts[per],
                                                      replace=True)
             for per in per_counts.index
         ]
