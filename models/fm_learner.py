@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from utils import build_logger
@@ -63,7 +63,7 @@ class FMLearner(object):
         # self._schedular = optim.lr_scheduler.StepLR(op,
         #                                             lr_decay_freq,
         #                                             gamma=lr_decay_factor)
-        self._writer = writer = SummaryWriter(logdir=log_dir)
+        self._writer = writer = SummaryWriter(log_dir=log_dir)
         self._global_step = 0
 
         schedular = self._schedular
@@ -72,7 +72,6 @@ class FMLearner(object):
             print('Epoch: {}'.format(cur_epoch))
             self.train_loop(cur_epoch)
             self.valid_loop(cur_epoch)
-            schedular.step()  # type: ignore
 
         writer.close()
 
@@ -105,6 +104,8 @@ class FMLearner(object):
         loss_callback = self._loss_callback
         writer = self._writer
         global_step = self._global_step
+        schedular = self._schedular
+
         self.hit_per_user.zero_()
         self.user_counts.zero_()
         loss = 0.0
@@ -116,6 +117,7 @@ class FMLearner(object):
             bprloss = loss_callback(self.model, pos_preds, neg_preds, weight)
             bprloss.backward()
             op.step()
+            schedular.step()
 
             cur_loss = bprloss.item()
             loss += cur_loss
@@ -124,6 +126,7 @@ class FMLearner(object):
             print("Epoch {} step {}: training loss: {}".format(
                 epoch, global_step, cur_loss))
             global_step += 1
+
             with T.no_grad():
                 self.update_hit_counts(user_index, pos_preds, neg_preds)
 
